@@ -1,42 +1,39 @@
-const API_BASE = 'https://edonet-quick.onrender.com';
+var API_BASE = 'https://edonet-quick.onrender.com';
 
-const FACILITIES = {
-  sports:  ['Edogawa Sports Land','Komatsugawa Sports Center','Kasai Sports Center','Koiwa Sports Center','Tobu Sports Center'],
-  culture: ['Higashikasai Community Hall','Komatsugawa Community Hall','Kasai Kumin-kan','Koiwa Kumin-kan','Shikahone Community Hall'],
-  large:   ['Tower Hall Funabori','Sogo Bunka Center','Green Palace'],
-};
-const TIME_SLOTS = ['09:00','10:00','11:00','13:00','14:00','15:00','17:00','18:00','19:00'];
+var EDONET_BASE = 'https://www.shisetsuyoyaku.city.edogawa.tokyo.jp/user';
 
-const NAV = [
+var NAV = [
   { screen:'home',    icon:'Home',    label:'Home' },
+  { screen:'scan',    icon:'Scan',    label:'Scan' },
   { screen:'lottery', icon:'Lottery', label:'Lottery' },
   { screen:'results', icon:'Results', label:'Results' },
-  { screen:'scan',    icon:'Scan',    label:'Scan' },
 ];
 
-const state = {
+var state = {
   userId: '',
   token: null,
   results: [],
   filter: 'all',
+  scanData: {},
+  calYear: new Date().getFullYear(),
+  calMonth: new Date().getMonth(),
 };
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', function() {
   buildNavs();
   restoreCreds();
   attachEvents();
-  generateDateChips();
   updateCalStatus();
 });
 
 function buildNavs() {
-  document.querySelectorAll('.bottom-nav').forEach(nav => {
-    const active = nav.dataset.screen;
-    nav.innerHTML = NAV.map(n =>
-      '<div class="nav-item ' + (n.screen === active ? 'active' : '') + '" data-nav="' + n.screen + '">' +
-      '<div class="nav-icon">' + n.icon + '</div>' +
-      '<div class="nav-label">' + n.label + '</div></div>'
-    ).join('');
+  document.querySelectorAll('.bottom-nav').forEach(function(nav) {
+    var active = nav.dataset.screen;
+    nav.innerHTML = NAV.map(function(n) {
+      return '<div class="nav-item ' + (n.screen === active ? 'active' : '') + '" data-nav="' + n.screen + '">' +
+        '<div class="nav-icon">' + n.icon + '</div>' +
+        '<div class="nav-label">' + n.label + '</div></div>';
+    }).join('');
   });
 }
 
@@ -44,19 +41,23 @@ function attachEvents() {
   document.body.addEventListener('click', function(e) {
     var navEl    = e.target.closest('[data-nav]');
     var chipEl   = e.target.closest('.chip');
-    var slotEl   = e.target.closest('.slot');
     var actionEl = e.target.closest('[data-action]');
+    var calDay   = e.target.closest('.cal-day');
+    var overlay  = e.target.closest('.bottom-sheet-overlay');
     if (navEl)    { goTo(navEl.dataset.nav); return; }
     if (actionEl) { showToast('Coming soon'); return; }
-    if (chipEl)   { handleChip(chipEl); return; }
-    if (slotEl)   { handleSlot(slotEl); return; }
+    if (chipEl && chipEl.dataset.range) { selectRangeChip(chipEl); return; }
+    if (chipEl && chipEl.dataset.filter) { selectFilterChip(chipEl); return; }
+    if (calDay && calDay.dataset.date)  { openSheet(calDay.dataset.date); return; }
+    if (overlay) { closeSheet(); return; }
   });
+
   document.getElementById('btn-login').addEventListener('click', doLogin);
   document.getElementById('input-password').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
   document.getElementById('btn-logout').addEventListener('click', doLogout);
-  document.getElementById('sel-facility-type').addEventListener('change', onFacilityChange);
-  document.getElementById('btn-lottery-submit').addEventListener('click', submitLottery);
   document.getElementById('btn-scan').addEventListener('click', doScan);
+  document.getElementById('cal-prev').addEventListener('click', function() { changeMonth(-1); });
+  document.getElementById('cal-next').addEventListener('click', function() { changeMonth(1); });
 }
 
 function goTo(screen) {
@@ -65,46 +66,37 @@ function goTo(screen) {
   document.getElementById('screen-' + screen).classList.add('active');
   window.scrollTo(0, 0);
   if (screen === 'results') loadResults();
-  if (screen === 'home')    refreshHomeTiles();
 }
 
+/* ?? LOGIN ?? */
 async function doLogin() {
   var uid = document.getElementById('input-userid').value.trim();
   var pw  = document.getElementById('input-password').value.trim();
   var err = document.getElementById('login-error');
   err.textContent = '';
-
   if (!uid || !pw) { err.textContent = 'Enter your User ID and password'; return; }
-
   setBtnLoading('btn-login', 'login-label', 'login-spinner', true);
-
   try {
     var res  = await fetch(API_BASE + '/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: uid, password: pw })
     });
     var data = await res.json();
     if (res.ok && data.success) {
-      onLoginSuccess(uid, pw, data.session_token);
+      state.userId = uid;
+      state.token  = data.session_token;
+      if (document.getElementById('toggle-remember').checked) saveCreds(uid, pw);
+      document.getElementById('home-userid-display').textContent = uid;
+      goTo('home');
+      showToast('Logged in successfully');
     } else {
       err.textContent = data.error || 'Login failed. Check your credentials.';
     }
-  } catch (e) {
+  } catch(e) {
     err.textContent = 'Cannot reach server: ' + e.message;
   } finally {
     setBtnLoading('btn-login', 'login-label', 'login-spinner', false);
   }
-}
-
-function onLoginSuccess(uid, pw, token) {
-  state.userId = uid;
-  state.token  = token;
-  if (document.getElementById('toggle-remember').checked) saveCreds(uid, pw);
-  document.getElementById('home-userid-display').textContent = uid;
-  document.getElementById('home-session-badge').textContent  = 'LOGGED IN';
-  goTo('home');
-  refreshHomeTiles();
 }
 
 function doLogout() {
@@ -114,177 +106,226 @@ function doLogout() {
   showToast('Logged out');
 }
 
-function refreshHomeTiles() {
-  document.getElementById('tile-lottery-count').textContent  = '-';
-  document.getElementById('tile-results-count').textContent  = state.results.length || '-';
-  document.getElementById('tile-scan-count').textContent     = '-';
-  document.getElementById('tile-bookings-count').textContent = '-';
-  var pending = state.results.filter(function(r) { return r.status === 'pending'; }).length;
-  var badge = document.getElementById('tile-result-badge');
-  if (badge) { badge.style.display = pending ? 'block' : 'none'; badge.textContent = pending + ' New'; }
-}
-
 function updateCalStatus() {
   var el  = document.getElementById('cal-status-text');
   if (!el) return;
   var day = new Date().getDate();
-  if (day >= 1 && day <= 10)       el.textContent = 'Sports lottery open - closes 10th 22:00';
-  else if (day >= 5 && day <= 14)  el.textContent = 'Culture lottery open - closes 14th 22:00';
-  else                             el.textContent = 'No window open - Opens 1st of next month';
+  if (day >= 1 && day <= 10)      el.textContent = 'Sports lottery open - closes 10th 22:00';
+  else if (day >= 5 && day <= 14) el.textContent = 'Culture lottery open - closes 14th 22:00';
+  else                            el.textContent = 'No window open - Opens 1st of next month';
 }
 
-function onFacilityChange() {
-  var type = document.getElementById('sel-facility-type').value;
-  var el   = document.getElementById('sel-facility-name');
-  if (type && FACILITIES[type]) {
-    el.style.display = 'block';
-    el.innerHTML = '<option value="">Select facility...</option>' +
-      FACILITIES[type].map(function(f) { return '<option value="' + f + '">' + f + '</option>'; }).join('');
-  } else {
-    el.style.display = 'none';
+/* ?? SCAN ?? */
+function selectRangeChip(chip) {
+  document.querySelectorAll('[data-range]').forEach(function(c) { c.classList.remove('chip-selected'); });
+  chip.classList.add('chip-selected');
+}
+
+async function doScan() {
+  var rangeChip = document.querySelector('[data-range].chip-selected');
+  var days      = rangeChip ? parseInt(rangeChip.dataset.range) : 14;
+
+  setBtnLoading('btn-scan', 'scan-label', 'scan-spinner', true);
+  document.getElementById('scan-loader').style.display = 'block';
+  document.getElementById('scan-empty').style.display  = 'none';
+  document.getElementById('cal-wrap').style.display    = 'none';
+
+  try {
+    var res  = await fetch(API_BASE + '/api/scan', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_token: state.token, days: days })
+    });
+    var data = await res.json();
+    if (data.availability) {
+      state.scanData = data.availability;
+    } else {
+      state.scanData = makeMockData(days);
+    }
+  } catch(e) {
+    state.scanData = makeMockData(days);
+  } finally {
+    document.getElementById('scan-loader').style.display = 'none';
+    setBtnLoading('btn-scan', 'scan-label', 'scan-spinner', false);
   }
-  updateSteps();
+
+  state.calYear  = new Date().getFullYear();
+  state.calMonth = new Date().getMonth();
+  renderCalendar();
+  document.getElementById('cal-wrap').style.display = 'block';
+  showToast('Scan complete');
 }
 
-function generateDateChips() {
-  var c = document.getElementById('date-chips');
-  var chips = [];
+function makeMockData(days) {
+  var data  = {};
   var today = new Date();
-  for (var i = 1; chips.length < 8; i++) {
+  var facilities = ['Ichinoe Community Hall','Community Plaza Koto','Matsue Kumin Plaza','Bunka Sports Plaza','Hirai Community Hall'];
+  for (var i = 0; i < days; i++) {
     var d = new Date(today);
     d.setDate(today.getDate() + i);
-    if (d.getDay() === 0 || d.getDay() === 6) {
-      var label = d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'numeric' });
-      chips.push('<div class="chip" data-date="' + d.toISOString().slice(0,10) + '">' + label + '</div>');
+    var key = d.toISOString().slice(0, 10);
+    var count = Math.floor(Math.random() * 4);
+    if (count > 0) {
+      data[key] = [];
+      for (var j = 0; j < count; j++) {
+        var status = Math.random() > 0.3 ? 'available' : 'partial';
+        data[key].push({ name: facilities[j % facilities.length], status: status });
+      }
+    } else {
+      data[key] = [];
     }
   }
-  c.innerHTML = chips.join('');
+  return data;
 }
 
-function handleChip(chip) {
-  if (chip.closest('.filter-chips')) {
-    chip.closest('.chips-row').querySelectorAll('.chip').forEach(function(c) { c.classList.remove('chip-selected'); });
-    chip.classList.add('chip-selected');
-    state.filter = chip.dataset.filter;
-    renderResults();
-    return;
+/* ?? CALENDAR ?? */
+function changeMonth(dir) {
+  state.calMonth += dir;
+  if (state.calMonth > 11) { state.calMonth = 0;  state.calYear++; }
+  if (state.calMonth < 0)  { state.calMonth = 11; state.calYear--; }
+  renderCalendar();
+}
+
+function renderCalendar() {
+  var year  = state.calYear;
+  var month = state.calMonth;
+  var monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('cal-month-title').textContent = monthNames[month] + ' ' + year;
+
+  var grid  = document.getElementById('cal-grid');
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  var firstDay = new Date(year, month, 1).getDay();
+  var daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  var html = '';
+
+  for (var i = 0; i < firstDay; i++) {
+    html += '<div class="cal-day empty"><div class="cal-day-num"></div></div>';
   }
-  if (chip.dataset.scandate !== undefined) {
-    document.querySelectorAll('[data-scandate]').forEach(function(c) { c.classList.remove('chip-selected'); });
-    chip.classList.add('chip-selected');
-    return;
+
+  for (var d = 1; d <= daysInMonth; d++) {
+    var dateObj = new Date(year, month, d);
+    dateObj.setHours(0, 0, 0, 0);
+    var key     = dateObj.toISOString().slice(0, 10);
+    var isToday = dateObj.getTime() === today.getTime();
+    var isPast  = dateObj.getTime() < today.getTime();
+    var slots   = state.scanData[key];
+    var hasData = slots !== undefined;
+    var avail   = hasData ? slots.filter(function(s) { return s.status === 'available'; }).length : 0;
+    var partial = hasData ? slots.filter(function(s) { return s.status === 'partial'; }).length : 0;
+    var total   = hasData ? slots.length : 0;
+
+    var dotColor = '';
+    var countText = '';
+    var clickable = false;
+
+    if (hasData && total > 0 && !isPast) {
+      clickable = true;
+      if (avail > 0) {
+        dotColor  = 'dot-green';
+        countText = avail + (avail === 1 ? ' facility' : ' facilities');
+      } else if (partial > 0) {
+        dotColor  = 'dot-yellow';
+        countText = partial + ' partial';
+      }
+    } else if (hasData && total === 0 && !isPast) {
+      dotColor = 'dot-grey';
+    }
+
+    var classes = 'cal-day';
+    if (isToday)   classes += ' today';
+    if (isPast)    classes += ' past';
+    if (clickable) classes += ' has-slots';
+
+    var dataAttr = clickable ? ' data-date="' + key + '"' : '';
+
+    html += '<div class="' + classes + '"' + dataAttr + '>' +
+      '<div class="cal-day-num">' + d + '</div>' +
+      (countText ? '<div class="cal-day-count">' + countText + '</div>' : '') +
+      (dotColor  ? '<div class="cal-dot ' + dotColor + '"></div>' : '') +
+      '</div>';
   }
-  chip.closest('.chips-row').querySelectorAll('.chip').forEach(function(c) { c.classList.remove('chip-selected'); });
-  chip.classList.add('chip-selected');
-  if (chip.dataset.date) loadTimeSlots(chip.dataset.date);
-  updateSteps();
+
+  grid.innerHTML = html;
 }
 
-async function loadTimeSlots(dt) {
-  var type = document.getElementById('sel-facility-type').value;
-  var name = document.getElementById('sel-facility-name').value;
-  var grid = document.getElementById('slots-grid');
-  grid.innerHTML = '<div class="slots-placeholder">Loading...</div>';
-  try {
-    var res  = await fetch(API_BASE + '/api/slots', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_token: state.token, facility_type: type, facility_name: name, date: dt })
-    });
-    var data = await res.json();
-    renderSlots(data.slots);
-  } catch (e) {
-    renderSlots(TIME_SLOTS.map(function(t) { return { time: t, available: true }; }));
+/* ?? BOTTOM SHEET ?? */
+function openSheet(dateStr) {
+  var slots = state.scanData[dateStr] || [];
+  var d     = new Date(dateStr + 'T00:00:00');
+  var days  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var label = days[d.getDay()] + ', ' + months[d.getMonth()] + ' ' + d.getDate();
+
+  document.getElementById('sheet-date').textContent  = label;
+
+  var avail = slots.filter(function(s) { return s.status !== 'none'; });
+  document.getElementById('sheet-count').textContent = avail.length + ' facilit' + (avail.length === 1 ? 'y' : 'ies') + ' available';
+
+  var list = document.getElementById('sheet-list');
+  if (avail.length === 0) {
+    list.innerHTML = '<div class="empty-text" style="padding:20px 0;text-align:center;">No availability on this date</div>';
+  } else {
+    list.innerHTML = avail.map(function(s) {
+      var dotClass = s.status === 'available' ? 'dot-green' : 'dot-yellow';
+      var label2   = s.status === 'available' ? 'Available' : 'Partially available';
+      var url      = EDONET_BASE + '/Home';
+      return '<div class="sheet-item">' +
+        '<div class="sheet-item-dot ' + dotClass + '"></div>' +
+        '<div class="sheet-item-info">' +
+          '<div class="sheet-item-name">' + s.name + '</div>' +
+          '<div class="sheet-item-detail">' + label2 + ' - Badminton</div>' +
+        '</div>' +
+        '<button class="sheet-item-btn" onclick="openSite(\'' + url + '\')">Open ></button>' +
+      '</div>';
+    }).join('');
   }
-  updateSteps();
+
+  document.getElementById('sheet-overlay').classList.add('show');
+  document.getElementById('bottom-sheet').classList.add('show');
 }
 
-function renderSlots(slots) {
-  document.getElementById('slots-grid').innerHTML = slots.map(function(s) {
-    return '<div class="slot ' + (s.available ? 'available' : '') + '" data-time="' + s.time + '">' +
-           '<span class="time">' + s.time + '</span>' +
-           '<span class="avail">' + (s.available ? 'open' : '-') + '</span></div>';
-  }).join('');
+function closeSheet() {
+  document.getElementById('sheet-overlay').classList.remove('show');
+  document.getElementById('bottom-sheet').classList.remove('show');
 }
 
-function handleSlot(slot) {
-  document.querySelectorAll('.slot').forEach(function(s) { s.classList.remove('selected'); });
-  slot.classList.add('selected');
-  updateSteps();
+function openSite(url) {
+  window.open(url, '_blank');
 }
 
-function updateSteps() {
-  var t = document.getElementById('sel-facility-type').value;
-  var d = document.querySelector('#date-chips .chip-selected');
-  var s = document.querySelector('.slot.selected');
-  var dots = ['s1','s2','s3','s4'].map(function(id) { return document.getElementById(id); });
-  if (!dots[0]) return;
-  dots[0].className = 'step-dot ' + (t ? 'done' : 'active');
-  dots[1].className = 'step-dot ' + (t && d ? 'done' : t ? 'active' : '');
-  dots[2].className = 'step-dot ' + (t && d && s ? 'done' : (t && d) ? 'active' : '');
-  dots[3].className = 'step-dot ' + (t && d && s ? 'active' : '');
-}
-
-async function submitLottery() {
-  var type    = document.getElementById('sel-facility-type').value;
-  var name    = document.getElementById('sel-facility-name').value;
-  var dateEl  = document.querySelector('#date-chips .chip-selected');
-  var slotEl  = document.querySelector('.slot.selected');
-  var purpose = document.getElementById('sel-purpose').value;
-  if (!type)    { showToast('Select a facility type'); return; }
-  if (!dateEl)  { showToast('Select a date'); return; }
-  if (!slotEl)  { showToast('Select a time slot'); return; }
-  if (!purpose) { showToast('Select a purpose'); return; }
-  setBtnLoading('btn-lottery-submit', 'lottery-label', 'lottery-spinner', true);
-  try {
-    var res  = await fetch(API_BASE + '/api/lottery/apply', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_token: state.token, facility_type: type, facility_name: name, date: dateEl.dataset.date, time_slot: slotEl.dataset.time, purpose: purpose })
-    });
-    var data = await res.json();
-    if (res.ok && data.success) { showToast('Lottery submitted!'); goTo('results'); }
-    else showToast(data.error || 'Failed');
-  } catch (e) {
-    showToast('Error: ' + e.message);
-  } finally {
-    setBtnLoading('btn-lottery-submit', 'lottery-label', 'lottery-spinner', false);
-  }
-}
-
+/* ?? RESULTS ?? */
 async function loadResults() {
   var loader = document.getElementById('results-loader');
   loader.style.display = 'block';
   try {
     var res  = await fetch(API_BASE + '/api/results', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_token: state.token })
     });
     var data = await res.json();
     state.results = data.results || [];
-  } catch (e) {
+  } catch(e) {
     state.results = [];
   } finally {
     loader.style.display = 'none';
     renderResults();
-    refreshHomeTiles();
   }
+}
+
+function selectFilterChip(chip) {
+  document.querySelectorAll('[data-filter]').forEach(function(c) { c.classList.remove('chip-selected'); });
+  chip.classList.add('chip-selected');
+  state.filter = chip.dataset.filter;
+  renderResults();
 }
 
 function renderResults() {
   var filtered = state.filter === 'all' ? state.results : state.results.filter(function(r) { return r.status === state.filter; });
-  var counts = { won:0, pending:0, lost:0 };
-  state.results.forEach(function(r) { counts[r.status] = (counts[r.status] || 0) + 1; });
-  var wonEl = document.getElementById('res-won-count');
-  var penEl = document.getElementById('res-pending-count');
-  var losEl = document.getElementById('res-lost-count');
-  if (wonEl) wonEl.textContent = counts.won;
-  if (penEl) penEl.textContent = counts.pending;
-  if (losEl) losEl.textContent = counts.lost;
   var list = document.getElementById('result-list');
   if (!filtered.length) {
-    list.innerHTML = '<div class="empty-state"><div class="empty-icon">No results</div></div>';
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">No results yet</div></div>';
     return;
   }
   var labels = { won:'Won', lost:'Not Won', pending:'Pending' };
@@ -300,48 +341,7 @@ function renderResults() {
   }).join('');
 }
 
-async function doScan() {
-  var loader  = document.getElementById('scan-loader');
-  var results = document.getElementById('scan-results');
-  var type    = document.getElementById('scan-type').value;
-  var chip    = document.querySelector('[data-scandate].chip-selected');
-  var range   = chip ? chip.dataset.scandate : 'today';
-  loader.style.display = 'block';
-  results.innerHTML = '';
-  setBtnLoading('btn-scan', 'scan-label', 'scan-spinner', true);
-  try {
-    var res  = await fetch(API_BASE + '/api/scan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_token: state.token, facility_type: type, date_range: range })
-    });
-    var data = await res.json();
-    renderScan(data.slots);
-  } catch (e) {
-    results.innerHTML = '<div class="empty-state"><div class="empty-text">Error: ' + e.message + '</div></div>';
-  } finally {
-    loader.style.display = 'none';
-    setBtnLoading('btn-scan', 'scan-label', 'scan-spinner', false);
-  }
-}
-
-function renderScan(items) {
-  var el = document.getElementById('scan-results');
-  if (!items || !items.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-text">No results</div></div>';
-    return;
-  }
-  el.innerHTML = items.map(function(d) {
-    var dotClass   = d.slots === 0 ? 'red' : d.slots === 1 ? 'orange' : 'green';
-    var countText  = d.slots === 0 ? 'Full' : d.slots + ' slot' + (d.slots > 1 ? 's' : '') + ' open';
-    return '<div class="scan-card">' +
-      '<div class="scan-dot ' + dotClass + '"></div>' +
-      '<div class="scan-body"><div class="scan-name">' + d.name + '</div>' +
-      '<div class="scan-detail">' + d.detail + '</div></div>' +
-      '<div class="scan-count ' + dotClass + '">' + countText + '</div></div>';
-  }).join('');
-}
-
+/* ?? UTILS ?? */
 function setBtnLoading(btnId, labelId, spinnerId, loading) {
   var btn = document.getElementById(btnId);
   if (!btn) return;

@@ -7,20 +7,16 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
 <div class="app">
 
   <!-- ══ LOGIN ══ -->
   <div class="screen active" id="screen-login">
     <div class="login-wrap">
-
       <div class="login-header">
         <div class="app-pill">🔑 えどねっと Quick</div>
         <h1>Sign In</h1>
         <p class="login-sub">Edogawa Ward Facility System</p>
       </div>
-
-      <!-- Club-card style header like KariBRR -->
       <div class="club-card">
         <div class="club-card-left">
           <div class="online-dot"></div>
@@ -31,7 +27,6 @@
         </div>
         <div class="club-card-right">えどねっと</div>
       </div>
-
       <div class="card login-card">
         <div class="field-group">
           <label>利用者ID · User ID</label>
@@ -54,7 +49,6 @@
           <span id="login-spinner" class="spinner" style="display:none"></span>
         </button>
       </div>
-
       <p class="login-note">Credentials stored locally only · Never shared</p>
     </div>
   </div>
@@ -62,12 +56,9 @@
   <!-- ══ HOME ══ -->
   <div class="screen" id="screen-home">
     <div class="page-wrap">
-
       <div class="page-header">
         <div class="app-pill">🔑 えどねっと Quick ▾</div>
       </div>
-
-      <!-- session card -->
       <div class="club-card">
         <div class="club-card-left">
           <div class="online-dot"></div>
@@ -78,42 +69,32 @@
         </div>
         <div class="club-logout" id="btn-logout">Logout ›</div>
       </div>
-
-      <!-- 2×2 tile grid -->
       <div class="tiles-grid">
-
-        <div class="tile" data-nav="lottery">
+        <div class="tile accent-blue" data-nav="lottery">
           <div class="tile-emoji">🎲</div>
-          <div class="tile-number" id="tile-lottery-count">–</div>
+          <div class="tile-number">–</div>
           <div class="tile-title">Apply Lottery</div>
           <div class="tile-sub">抽選申込 · new application</div>
         </div>
-
-        <div class="tile" data-nav="results">
+        <div class="tile accent-purple" data-nav="results">
           <div class="tile-emoji">🏆</div>
-          <div class="tile-number" id="tile-results-count">–</div>
+          <div class="tile-number">–</div>
           <div class="tile-title">Results</div>
           <div class="tile-sub">抽選結果 · check outcomes</div>
-          <div class="tile-badge" id="tile-result-badge" style="display:none">New</div>
         </div>
-
-        <div class="tile" data-nav="scan">
-          <div class="tile-emoji">🔍</div>
-          <div class="tile-number" id="tile-scan-count">–</div>
-          <div class="tile-title">Scan Slots</div>
-          <div class="tile-sub">空き照会 · available now</div>
-        </div>
-
-        <div class="tile" data-nav="bookings">
+        <div class="tile accent-green" data-nav="scan">
           <div class="tile-emoji">📅</div>
-          <div class="tile-number" id="tile-bookings-count">–</div>
+          <div class="tile-number">–</div>
+          <div class="tile-title">Scan Slots</div>
+          <div class="tile-sub">空き照会 · calendar view</div>
+        </div>
+        <div class="tile" data-action="bookings">
+          <div class="tile-emoji">📋</div>
+          <div class="tile-number">–</div>
           <div class="tile-title">My Bookings</div>
           <div class="tile-sub">予約確認 · confirmed</div>
         </div>
-
       </div>
-
-      <!-- Lottery window wide tile -->
       <div class="tile tile-wide" id="tile-calendar">
         <div class="tile-emoji">📆</div>
         <div class="tile-wide-content">
@@ -122,14 +103,81 @@
         </div>
         <div class="tile-arrow">›</div>
       </div>
-
-      <!-- Help wide tile -->
-      <div class="tile tile-wide tile-help" data-action="help">
+      <div class="tile tile-wide tile-help" data-action="help" style="margin-bottom:100px;">
         <div class="tile-title" style="font-size:17px;">Help &amp; Guide</div>
+      </div>
+    </div>
+    <nav class="bottom-nav" data-screen="home"></nav>
+  </div>
+
+  <!-- ══ SCAN — CALENDAR ══ -->
+  <div class="screen" id="screen-scan">
+    <div class="page-wrap">
+      <div class="page-header">
+        <div class="back-btn" data-nav="home">‹</div>
+        <div class="page-title">Scan Slots</div>
+      </div>
+      <div class="page-sub">空き照会 · Badminton availability</div>
+
+      <!-- Filter bar -->
+      <div class="card form-card" style="margin-bottom:14px;">
+        <div class="scan-filter-row">
+          <div class="scan-filter-label">Range</div>
+          <div class="chips-row" id="scan-range-chips">
+            <div class="chip" data-range="7">1 Week</div>
+            <div class="chip chip-selected" data-range="14">2 Weeks</div>
+            <div class="chip" data-range="31">1 Month</div>
+          </div>
+        </div>
+        <button class="btn-main" id="btn-scan" style="margin-top:14px;">
+          <span id="scan-label">🔍 Scan Now</span>
+          <span id="scan-spinner" class="spinner" style="display:none"></span>
+        </button>
+      </div>
+
+      <!-- Loading bar -->
+      <div class="loading-bar" id="scan-loader" style="display:none;"><div class="loading-bar-fill"></div></div>
+
+      <!-- Calendar -->
+      <div class="cal-wrap" id="cal-wrap" style="display:none;">
+        <div class="cal-header">
+          <button class="cal-nav-btn" id="cal-prev">‹</button>
+          <div class="cal-month-title" id="cal-month-title">April 2026</div>
+          <button class="cal-nav-btn" id="cal-next">›</button>
+        </div>
+        <div class="cal-weekdays">
+          <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+
+        <!-- Legend -->
+        <div class="cal-legend">
+          <div class="legend-item"><div class="legend-dot dot-green"></div><span>Available</span></div>
+          <div class="legend-item"><div class="legend-dot dot-yellow"></div><span>Partial</span></div>
+          <div class="legend-item"><div class="legend-dot dot-grey"></div><span>Full</span></div>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div class="empty-state" id="scan-empty" style="margin-bottom:100px;">
+        <div class="empty-icon">📅</div>
+        <div class="empty-text">Tap Scan to check<br>badminton availability</div>
       </div>
 
     </div>
-    <nav class="bottom-nav" data-screen="home"></nav>
+
+    <!-- Bottom sheet -->
+    <div class="bottom-sheet-overlay" id="sheet-overlay"></div>
+    <div class="bottom-sheet" id="bottom-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-date" id="sheet-date">Tuesday, April 14</div>
+        <div class="sheet-count" id="sheet-count">3 facilities available</div>
+      </div>
+      <div class="sheet-list" id="sheet-list"></div>
+    </div>
+
+    <nav class="bottom-nav" data-screen="scan"></nav>
   </div>
 
   <!-- ══ LOTTERY ══ -->
@@ -139,79 +187,10 @@
         <div class="back-btn" data-nav="home">‹</div>
         <div class="page-title">Apply Lottery</div>
       </div>
-      <div class="page-sub">抽選申込 · Submit a new application</div>
-
-      <!-- Step progress -->
-      <div class="steps-row">
-        <div class="step-dot active" id="s1"></div>
-        <div class="step-line"></div>
-        <div class="step-dot" id="s2"></div>
-        <div class="step-line"></div>
-        <div class="step-dot" id="s3"></div>
-        <div class="step-line"></div>
-        <div class="step-dot" id="s4"></div>
-      </div>
-
-      <!-- Facility -->
-      <div class="card form-card">
-        <div class="form-card-header">
-          <span class="form-step-num">01</span>
-          <span class="form-step-label">Facility Type · 施設種類</span>
-        </div>
-        <select class="select-field" id="sel-facility-type">
-          <option value="">Select facility type...</option>
-          <option value="sports">🏃 Sports Facilities · スポーツ施設</option>
-          <option value="culture">🎭 Community / Culture · 地域・文化施設</option>
-          <option value="large">🏛 Large Culture · 大型文化施設</option>
-        </select>
-        <select class="select-field" id="sel-facility-name" style="display:none;margin-top:10px;">
-          <option value="">Select facility...</option>
-        </select>
-      </div>
-
-      <!-- Date -->
-      <div class="card form-card">
-        <div class="form-card-header">
-          <span class="form-step-num">02</span>
-          <span class="form-step-label">Date · 日付</span>
-        </div>
-        <div class="chips-row" id="date-chips"></div>
-      </div>
-
-      <!-- Time -->
-      <div class="card form-card">
-        <div class="form-card-header">
-          <span class="form-step-num">03</span>
-          <span class="form-step-label">Time Slot · 時間帯</span>
-        </div>
-        <div class="slots-grid" id="slots-grid">
-          <div class="slots-placeholder">Select facility &amp; date first</div>
-        </div>
-      </div>
-
-      <!-- Purpose -->
-      <div class="card form-card" style="margin-bottom:110px;">
-        <div class="form-card-header">
-          <span class="form-step-num">04</span>
-          <span class="form-step-label">Purpose · 利用目的</span>
-        </div>
-        <select class="select-field" id="sel-purpose">
-          <option value="">Select purpose...</option>
-          <option value="badminton">🏸 Badminton · バドミントン</option>
-          <option value="volleyball">🏐 Volleyball · バレーボール</option>
-          <option value="basketball">🏀 Basketball · バスケットボール</option>
-          <option value="tabletennis">🏓 Table Tennis · 卓球</option>
-          <option value="futsal">⚽ Futsal · フットサル</option>
-          <option value="meeting">💬 Meeting · 会議</option>
-          <option value="other">📋 Other · その他</option>
-        </select>
-      </div>
-
-      <div class="submit-area">
-        <button class="btn-main" id="btn-lottery-submit">
-          <span id="lottery-label">🎲 Submit Application</span>
-          <span id="lottery-spinner" class="spinner" style="display:none"></span>
-        </button>
+      <div class="page-sub">抽選申込 · Coming soon</div>
+      <div class="empty-state" style="margin-top:40px;margin-bottom:100px;">
+        <div class="empty-icon">🎲</div>
+        <div class="empty-text">Lottery application<br>will be available soon</div>
       </div>
     </div>
     <nav class="bottom-nav" data-screen="lottery"></nav>
@@ -225,100 +204,19 @@
         <div class="page-title">Results</div>
       </div>
       <div class="page-sub">抽選結果 · Your lottery outcomes</div>
-
-      <!-- Summary tiles -->
-      <div class="tiles-grid tiles-3">
-        <div class="tile tile-mini tile-green">
-          <div class="tile-emoji" style="font-size:22px">✅</div>
-          <div class="tile-number" id="res-won-count" style="font-size:28px">0</div>
-          <div class="tile-title" style="font-size:12px">Won</div>
-        </div>
-        <div class="tile tile-mini tile-orange">
-          <div class="tile-emoji" style="font-size:22px">⏳</div>
-          <div class="tile-number" id="res-pending-count" style="font-size:28px">0</div>
-          <div class="tile-title" style="font-size:12px">Pending</div>
-        </div>
-        <div class="tile tile-mini tile-red">
-          <div class="tile-emoji" style="font-size:22px">❌</div>
-          <div class="tile-number" id="res-lost-count" style="font-size:28px">0</div>
-          <div class="tile-title" style="font-size:12px">Not Won</div>
-        </div>
-      </div>
-
-      <!-- Filter chips -->
-      <div class="chips-row filter-chips">
+      <div class="chips-row filter-chips" style="margin-bottom:16px;">
         <div class="chip chip-selected" data-filter="all">All</div>
-        <div class="chip" data-filter="won">Won ✓</div>
+        <div class="chip" data-filter="won">Won</div>
         <div class="chip" data-filter="pending">Pending</div>
         <div class="chip" data-filter="lost">Not Won</div>
       </div>
-
       <div class="loading-bar" id="results-loader"><div class="loading-bar-fill"></div></div>
       <div id="result-list" style="margin-bottom:100px;"></div>
     </div>
     <nav class="bottom-nav" data-screen="results"></nav>
   </div>
 
-  <!-- ══ SCAN ══ -->
-  <div class="screen" id="screen-scan">
-    <div class="page-wrap">
-      <div class="page-header">
-        <div class="back-btn" data-nav="home">‹</div>
-        <div class="page-title">Scan Slots</div>
-      </div>
-      <div class="page-sub">空き照会 · Check availability now</div>
-
-      <div class="card form-card">
-        <div class="form-card-header">
-          <span class="form-step-num">🔍</span>
-          <span class="form-step-label">Filter</span>
-        </div>
-        <select class="select-field" id="scan-type">
-          <option value="sports">🏃 Sports Facilities</option>
-          <option value="culture">🎭 Community Halls</option>
-          <option value="large">🏛 Large Facilities</option>
-        </select>
-        <div class="chips-row" style="margin-top:12px;">
-          <div class="chip chip-selected" data-scandate="today">Today</div>
-          <div class="chip" data-scandate="week">This Week</div>
-          <div class="chip" data-scandate="month">This Month</div>
-        </div>
-      </div>
-
-      <button class="btn-main" id="btn-scan" style="margin-bottom:16px;">
-        <span id="scan-label">🔍 Scan Now</span>
-        <span id="scan-spinner" class="spinner" style="display:none"></span>
-      </button>
-
-      <div class="loading-bar" id="scan-loader" style="display:none;"><div class="loading-bar-fill"></div></div>
-      <div id="scan-results" style="margin-bottom:100px;">
-        <div class="empty-state">
-          <div class="empty-icon">🔍</div>
-          <div class="empty-text">Tap Scan to check<br>available slots in real time</div>
-        </div>
-      </div>
-    </div>
-    <nav class="bottom-nav" data-screen="scan"></nav>
-  </div>
-
-  <!-- ══ BOOKINGS ══ -->
-  <div class="screen" id="screen-bookings">
-    <div class="page-wrap">
-      <div class="page-header">
-        <div class="back-btn" data-nav="home">‹</div>
-        <div class="page-title">My Bookings</div>
-      </div>
-      <div class="page-sub">予約確認 · Confirmed reservations</div>
-      <div class="empty-state" style="margin-top:40px;">
-        <div class="empty-icon">📅</div>
-        <div class="empty-text">No bookings yet.<br>Apply lottery first!</div>
-      </div>
-    </div>
-    <nav class="bottom-nav" data-screen="bookings"></nav>
-  </div>
-
 </div>
-
 <div class="toast" id="toast"></div>
 <script src="main.js"></script>
 </body>

@@ -31,6 +31,7 @@ var state = {
 };
 
 document.addEventListener('DOMContentLoaded', function() {
+  fetch('https://edonet-quick.onrender.com/').catch(function(){});
   buildNavs();
   restoreCreds();
   attachEvents();
@@ -243,7 +244,7 @@ function renderCalendar() {
 function openSheet(dateStr) {
   state.selectedDate = dateStr;
   var slots  = state.scanData[dateStr] || [];
-  var d      = new Date(dateStr + 'T00:00:00');
+  var parts  = dateStr.split('-'); var d = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
   var days   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   var label  = days[d.getDay()] + ', ' + months[d.getMonth()] + ' ' + d.getDate();
@@ -288,7 +289,7 @@ function openFacility(facilityName) {
     if (slots[i].name === facilityName) { facility = slots[i]; break; }
   }
 
-  var d      = new Date(dateStr + 'T00:00:00');
+  var parts  = dateStr.split('-'); var d = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
   var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   var days   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var dateLabel = days[d.getDay()] + ' ' + months[d.getMonth()] + ' ' + d.getDate();
@@ -338,7 +339,7 @@ function openConfirm(slotDataStr) {
   var slot = JSON.parse(slotDataStr);
   state.selectedSlot = slot;
 
-  var d      = new Date(slot.date + 'T00:00:00');
+  var parts3 = slot.date.split('-'); var d = new Date(parseInt(parts3[0]), parseInt(parts3[1])-1, parseInt(parts3[2]));
   var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   var days   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   var dateLabel = days[d.getDay()] + ', ' + months[d.getMonth()] + ' ' + d.getDate();
@@ -385,7 +386,7 @@ async function doBook() {
 }
 
 function showSuccess(slot) {
-  var d      = new Date(slot.date + 'T00:00:00');
+  var parts4 = slot.date.split('-'); var d = new Date(parseInt(parts4[0]), parseInt(parts4[1])-1, parseInt(parts4[2]));
   var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   var days   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var dateLabel = days[d.getDay()] + ' ' + months[d.getMonth()] + ' ' + d.getDate();

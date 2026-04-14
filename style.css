@@ -395,7 +395,7 @@ body {
 .cal-wrap { background:var(--card); border-radius:var(--radius); border:1px solid var(--border); padding:20px 16px; margin-bottom:100px; }
 .cal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
 .cal-month-title { font-size:18px; font-weight:800; letter-spacing:-0.02em; }
-.cal-nav-btn { width:36px; height:36px; border-radius:10px; background:var(--bg); border:1px solid var(--border); font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text); }
+.cal-nav-btn { width:36px; height:36px; border-radius:10px; background:var(--bg); border:1px solid var(--border); font-size:16px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text); line-height:1; }
 .cal-nav-btn:active { background:var(--border); }
 .cal-weekdays { display:grid; grid-template-columns:repeat(7,1fr); margin-bottom:8px; }
 .cal-weekdays div { text-align:center; font-size:11px; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:0.05em; padding:4px 0; }

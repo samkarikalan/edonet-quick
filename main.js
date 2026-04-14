@@ -177,7 +177,7 @@ function makeMockData(days) {
     var d = new Date(today);
     d.setDate(today.getDate() + i);
     var key   = d.toISOString().slice(0, 10);
-    var count = Math.floor(Math.random() * 4);
+    var count = Math.floor(Math.random() * 4) + 1;
     data[key] = [];
     for (var j = 0; j < count; j++) {
       var status = Math.random() > 0.3 ? 'available' : 'partial';

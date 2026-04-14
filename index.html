@@ -4,16 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>edonet Quick</title>
+<link rel="apple-touch-icon" href="icon.png">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="app">
 
-  <!-- ?? LOGIN ?? -->
+  <!-- LOGIN -->
   <div class="screen active" id="screen-login">
     <div class="login-wrap">
       <div class="login-header">
-        <div class="app-pill">? edonet Quick</div>
+        <img src="icon.png" class="app-icon-img" onerror="this.style.display='none'">
+        <div class="app-pill">edonet Quick</div>
         <h1>Sign In</h1>
         <p class="login-sub">Edogawa Ward Facility System</p>
       </div>
@@ -22,7 +24,7 @@
           <div class="online-dot"></div>
           <div>
             <div class="club-name">Edogawa Ward</div>
-            <div class="club-badge">FACILITY LOTTERY</div>
+            <div class="club-badge">FACILITY BOOKING</div>
           </div>
         </div>
         <div class="club-card-right">edonet</div>
@@ -53,68 +55,131 @@
     </div>
   </div>
 
-  <!-- ?? HOME ?? -->
+  <!-- HOME -->
   <div class="screen" id="screen-home">
     <div class="page-wrap">
       <div class="page-header">
-        <div class="app-pill">? edonet Quick</div>
+        <div class="app-pill">edonet Quick</div>
       </div>
       <div class="club-card">
         <div class="club-card-left">
           <div class="online-dot"></div>
           <div>
             <div class="club-name" id="home-userid-display">User</div>
-            <div class="club-badge">LOGGED IN</div>
+            <div class="club-badge">ADMIN</div>
           </div>
         </div>
         <div class="club-logout" id="btn-logout">Logout</div>
       </div>
       <div class="tiles-grid">
         <div class="tile accent-blue" data-nav="scan">
-          <div class="tile-emoji">?</div>
-          <div class="tile-number">-</div>
+          <div class="tile-emoji">&#128197;</div>
+          <div class="tile-number" id="tile-scan-count">-</div>
           <div class="tile-title">Scan Slots</div>
-          <div class="tile-sub">Check availability</div>
+          <div class="tile-sub">Club availability</div>
+        </div>
+        <div class="tile accent-green" data-nav="members">
+          <div class="tile-emoji">&#128101;</div>
+          <div class="tile-number" id="tile-member-count">0</div>
+          <div class="tile-title">Members</div>
+          <div class="tile-sub">Manage accounts</div>
         </div>
         <div class="tile accent-purple" data-nav="results">
-          <div class="tile-emoji">?</div>
+          <div class="tile-emoji">&#127942;</div>
           <div class="tile-number">-</div>
           <div class="tile-title">Results</div>
           <div class="tile-sub">Lottery outcomes</div>
         </div>
-        <div class="tile accent-green" data-nav="lottery">
-          <div class="tile-emoji">?</div>
+        <div class="tile" data-nav="lottery">
+          <div class="tile-emoji">&#127922;</div>
           <div class="tile-number">-</div>
           <div class="tile-title">Apply Lottery</div>
           <div class="tile-sub">New application</div>
         </div>
-        <div class="tile" data-action="bookings">
-          <div class="tile-emoji">?</div>
-          <div class="tile-number">-</div>
-          <div class="tile-title">My Bookings</div>
-          <div class="tile-sub">Confirmed</div>
-        </div>
       </div>
       <div class="tile tile-wide" style="margin-bottom:100px;">
-        <div class="tile-emoji">?</div>
+        <div class="tile-emoji">&#128198;</div>
         <div class="tile-wide-content">
           <div class="tile-title">Lottery Window</div>
           <div class="tile-sub" id="cal-status-text">Checking...</div>
         </div>
-        <div class="tile-arrow">?</div>
+        <div class="tile-arrow">></div>
       </div>
     </div>
     <nav class="bottom-nav" data-screen="home"></nav>
   </div>
 
-  <!-- ?? SCAN ?? -->
+  <!-- MEMBERS -->
+  <div class="screen" id="screen-members">
+    <div class="page-wrap">
+      <div class="page-header">
+        <div class="back-btn" data-nav="home">&#60;</div>
+        <div class="page-title">Members</div>
+        <button class="btn-header-add" id="btn-add-member">+ Add</button>
+      </div>
+      <div class="page-sub">Club member edonet accounts</div>
+      <div class="member-strip">
+        <div class="member-strip-icon">&#128101;</div>
+        <div class="member-strip-text">
+          <div id="member-strip-count" class="member-strip-num">0 members</div>
+          <div class="member-strip-sub">stored on this device</div>
+        </div>
+      </div>
+      <div id="member-list"></div>
+      <div class="empty-state" id="member-empty" style="margin-bottom:100px;">
+        <div class="empty-icon">&#128101;</div>
+        <div class="empty-text">No members added yet.<br>Tap + Add to add your first member.</div>
+      </div>
+    </div>
+    <nav class="bottom-nav" data-screen="members"></nav>
+  </div>
+
+  <!-- ADD/EDIT MEMBER -->
+  <div class="screen" id="screen-add-member">
+    <div class="page-wrap">
+      <div class="page-header">
+        <div class="back-btn" id="add-member-back">&#60;</div>
+        <div class="page-title" id="add-member-title">Add Member</div>
+      </div>
+      <div class="page-sub">Enter member edonet credentials</div>
+      <div class="card login-card" style="margin-bottom:16px;">
+        <div class="field-group">
+          <label>Member Name</label>
+          <input type="text" id="member-name-input" placeholder="e.g. Kalan">
+        </div>
+        <div class="field-group">
+          <label>edonet User ID</label>
+          <input type="text" id="member-uid-input" placeholder="e.g. 00245864">
+        </div>
+        <div class="field-group">
+          <label>Password</label>
+          <input type="password" id="member-pw-input" placeholder="edonet password">
+        </div>
+      </div>
+      <button class="btn-main" id="btn-verify-member" style="margin-bottom:12px;">
+        <span id="verify-label">Verify Login</span>
+        <span id="verify-spinner" class="spinner" style="display:none"></span>
+      </button>
+      <div class="verify-status" id="verify-status"></div>
+      <button class="btn-main btn-save" id="btn-save-member" style="margin-top:12px;margin-bottom:40px;">
+        <span>Save Member</span>
+      </button>
+      <input type="hidden" id="edit-member-id" value="">
+    </div>
+  </div>
+
+  <!-- SCAN -->
   <div class="screen" id="screen-scan">
     <div class="page-wrap">
       <div class="page-header">
-        <div class="back-btn" data-nav="home">?</div>
+        <div class="back-btn" data-nav="home">&#60;</div>
         <div class="page-title">Scan Slots</div>
       </div>
-      <div class="page-sub">Badminton availability calendar</div>
+      <div class="page-sub">Badminton availability - all members</div>
+      <div class="scan-members-wrap" id="scan-members-wrap">
+        <div class="scan-members-label">MEMBERS TO SCAN</div>
+        <div class="scan-members-chips" id="scan-members-chips"></div>
+      </div>
       <div class="card form-card" style="margin-bottom:14px;">
         <div class="scan-filter-label">RANGE</div>
         <div class="chips-row" id="scan-range-chips">
@@ -124,16 +189,17 @@
           <div class="chip" data-range="90">All</div>
         </div>
         <button class="btn-main" id="btn-scan" style="margin-top:14px;">
-          <span id="scan-label">Scan Now</span>
+          <span id="scan-label">Scan All Members</span>
           <span id="scan-spinner" class="spinner" style="display:none"></span>
         </button>
       </div>
       <div class="loading-bar" id="scan-loader" style="display:none;"><div class="loading-bar-fill"></div></div>
+      <div id="scan-progress" class="scan-progress-wrap" style="display:none;"></div>
       <div class="cal-wrap" id="cal-wrap" style="display:none;">
         <div class="cal-header">
-          <button class="cal-nav-btn" id="cal-prev">?</button>
+          <button class="cal-nav-btn" id="cal-prev">&#60;</button>
           <div class="cal-month-title" id="cal-month-title">April 2026</div>
-          <button class="cal-nav-btn" id="cal-next">?</button>
+          <button class="cal-nav-btn" id="cal-next">&#62;</button>
         </div>
         <div class="cal-weekdays">
           <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
@@ -145,12 +211,15 @@
           <div class="legend-item"><div class="legend-dot dot-grey"></div><span>Full</span></div>
         </div>
       </div>
+      <div id="member-breakdown" style="display:none;margin-top:16px;margin-bottom:100px;">
+        <div class="breakdown-title">Member Breakdown</div>
+        <div id="breakdown-list"></div>
+      </div>
       <div class="empty-state" id="scan-empty" style="margin-bottom:100px;">
-        <div class="empty-icon">?</div>
-        <div class="empty-text">Tap Scan to check badminton availability</div>
+        <div class="empty-icon">&#128197;</div>
+        <div class="empty-text">Tap Scan All Members to check<br>badminton availability for everyone</div>
       </div>
     </div>
-    <!-- Facility list bottom sheet -->
     <div class="bottom-sheet-overlay" id="sheet-overlay"></div>
     <div class="bottom-sheet" id="bottom-sheet">
       <div class="sheet-handle"></div>
@@ -163,94 +232,68 @@
     <nav class="bottom-nav" data-screen="scan"></nav>
   </div>
 
-  <!-- ?? FACILITY DETAIL ?? -->
+  <!-- FACILITY DETAIL -->
   <div class="screen" id="screen-facility">
     <div class="page-wrap">
       <div class="page-header">
-        <div class="back-btn" id="facility-back">?</div>
+        <div class="back-btn" id="facility-back">&#60;</div>
         <div class="page-title" id="facility-title">Facility</div>
       </div>
-      <div class="page-sub" id="facility-date-sub">Tuesday, April 14</div>
-
-      <!-- Facility info card -->
+      <div class="page-sub" id="facility-date-sub">Date</div>
       <div class="card facility-info-card">
         <div class="facility-info-row">
-          <div class="facility-info-icon">?</div>
+          <div class="facility-info-icon">&#127992;</div>
           <div class="facility-info-text">
-            <div class="facility-info-name" id="facility-info-name">Facility Name</div>
+            <div class="facility-info-name" id="facility-info-name">Facility</div>
             <div class="facility-info-meta">Badminton - Indoor Sports</div>
           </div>
           <div class="facility-status-badge" id="facility-status-badge">Available</div>
         </div>
       </div>
-
-      <!-- Time slots -->
       <div class="slots-section-title">Available Time Slots</div>
       <div id="slots-list" style="margin-bottom:100px;"></div>
-
     </div>
     <nav class="bottom-nav" data-screen="scan"></nav>
   </div>
 
-  <!-- ?? CONFIRM BOOKING ?? -->
+  <!-- CONFIRM BOOKING -->
   <div class="screen" id="screen-confirm">
     <div class="page-wrap">
       <div class="page-header">
-        <div class="back-btn" id="confirm-back">?</div>
+        <div class="back-btn" id="confirm-back">&#60;</div>
         <div class="page-title">Confirm Booking</div>
       </div>
-      <div class="page-sub">Review and confirm your reservation</div>
-
-      <!-- Booking summary card -->
+      <div class="page-sub">Review and confirm reservation</div>
       <div class="card booking-summary">
         <div class="summary-row">
-          <div class="summary-icon">?</div>
-          <div class="summary-content">
-            <div class="summary-label">Facility</div>
-            <div class="summary-value" id="confirm-facility">-</div>
-          </div>
+          <div class="summary-icon">&#127970;</div>
+          <div class="summary-content"><div class="summary-label">Facility</div><div class="summary-value" id="confirm-facility">-</div></div>
         </div>
         <div class="summary-divider"></div>
         <div class="summary-row">
-          <div class="summary-icon">?</div>
-          <div class="summary-content">
-            <div class="summary-label">Date</div>
-            <div class="summary-value" id="confirm-date">-</div>
-          </div>
+          <div class="summary-icon">&#128197;</div>
+          <div class="summary-content"><div class="summary-label">Date</div><div class="summary-value" id="confirm-date">-</div></div>
         </div>
         <div class="summary-divider"></div>
         <div class="summary-row">
-          <div class="summary-icon">?</div>
-          <div class="summary-content">
-            <div class="summary-label">Time</div>
-            <div class="summary-value" id="confirm-time">-</div>
-          </div>
+          <div class="summary-icon">&#128336;</div>
+          <div class="summary-content"><div class="summary-label">Time</div><div class="summary-value" id="confirm-time">-</div></div>
         </div>
         <div class="summary-divider"></div>
         <div class="summary-row">
-          <div class="summary-icon">?</div>
-          <div class="summary-content">
-            <div class="summary-label">Purpose</div>
-            <div class="summary-value">Badminton</div>
-          </div>
+          <div class="summary-icon">&#127992;</div>
+          <div class="summary-content"><div class="summary-label">Purpose</div><div class="summary-value">Badminton</div></div>
         </div>
         <div class="summary-divider"></div>
         <div class="summary-row">
-          <div class="summary-icon">?</div>
-          <div class="summary-content">
-            <div class="summary-label">User ID</div>
-            <div class="summary-value" id="confirm-userid">-</div>
-          </div>
+          <div class="summary-icon">&#128100;</div>
+          <div class="summary-content"><div class="summary-label">Booking As</div><div class="summary-value" id="confirm-member">-</div></div>
         </div>
       </div>
-
-      <!-- Notice -->
       <div class="booking-notice">
-        <div class="notice-icon">?</div>
-        <div class="notice-text">This will submit a direct booking on edonet on your behalf. Please confirm the details above are correct.</div>
+        <div class="notice-icon">i</div>
+        <div class="notice-text">This will submit a direct booking on edonet on behalf of the selected member.</div>
       </div>
-
-      <!-- Confirm button -->
       <div class="confirm-btn-wrap">
         <button class="btn-main btn-confirm" id="btn-confirm-book">
           <span id="confirm-label">Confirm Booking</span>
@@ -258,14 +301,13 @@
         </button>
         <button class="btn-cancel" id="btn-cancel-book">Cancel</button>
       </div>
-
     </div>
   </div>
 
-  <!-- ?? BOOKING SUCCESS ?? -->
+  <!-- SUCCESS -->
   <div class="screen" id="screen-success">
     <div class="success-wrap">
-      <div class="success-icon">?</div>
+      <div class="success-icon">&#9989;</div>
       <div class="success-title">Booking Confirmed!</div>
       <div class="success-sub" id="success-detail">Your reservation has been submitted.</div>
       <div class="card success-card" id="success-summary"></div>
@@ -273,29 +315,29 @@
     </div>
   </div>
 
-  <!-- ?? LOTTERY ?? -->
+  <!-- LOTTERY -->
   <div class="screen" id="screen-lottery">
     <div class="page-wrap">
       <div class="page-header">
-        <div class="back-btn" data-nav="home">?</div>
+        <div class="back-btn" data-nav="home">&#60;</div>
         <div class="page-title">Apply Lottery</div>
       </div>
       <div class="empty-state" style="margin-top:40px;margin-bottom:100px;">
-        <div class="empty-icon">?</div>
+        <div class="empty-icon">&#127922;</div>
         <div class="empty-text">Lottery application coming soon</div>
       </div>
     </div>
     <nav class="bottom-nav" data-screen="lottery"></nav>
   </div>
 
-  <!-- ?? RESULTS ?? -->
+  <!-- RESULTS -->
   <div class="screen" id="screen-results">
     <div class="page-wrap">
       <div class="page-header">
-        <div class="back-btn" data-nav="home">?</div>
+        <div class="back-btn" data-nav="home">&#60;</div>
         <div class="page-title">Results</div>
       </div>
-      <div class="page-sub">Your lottery outcomes</div>
+      <div class="page-sub">Lottery outcomes</div>
       <div class="chips-row filter-chips" style="margin-bottom:16px;">
         <div class="chip chip-selected" data-filter="all">All</div>
         <div class="chip" data-filter="won">Won</div>

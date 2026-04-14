@@ -492,3 +492,90 @@ body {
 .success-row:last-child { border-bottom:none; }
 .success-key { font-size:12px; color:var(--text2); font-weight:600; }
 .success-val { font-size:13px; font-weight:700; }
+
+/* -- APP ICON -- */
+.app-icon-img { width:80px; height:80px; border-radius:18px; margin-bottom:12px; display:block; margin-left:auto; margin-right:auto; }
+
+/* -- HEADER ADD BUTTON -- */
+.btn-header-add {
+  margin-left:auto; background:var(--accent); color:white;
+  border:none; border-radius:10px; padding:8px 14px;
+  font-size:13px; font-weight:700; font-family:var(--font); cursor:pointer;
+}
+.btn-header-add:active { background:var(--accent-dark); }
+
+/* -- MEMBER STRIP -- */
+.member-strip {
+  background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+  padding:14px 18px; display:flex; align-items:center; gap:12px; margin-bottom:16px;
+}
+.member-strip-icon { font-size:28px; }
+.member-strip-num  { font-size:18px; font-weight:800; letter-spacing:-0.02em; }
+.member-strip-sub  { font-size:12px; color:var(--text2); margin-top:2px; }
+
+/* -- MEMBER CARD -- */
+.member-card {
+  background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+  padding:16px 18px; margin-bottom:10px; display:flex; align-items:center; gap:14px;
+}
+.member-avatar {
+  width:44px; height:44px; border-radius:14px;
+  background:linear-gradient(135deg, var(--accent), var(--accent-dark));
+  display:flex; align-items:center; justify-content:center;
+  font-size:18px; font-weight:800; color:white; flex-shrink:0;
+}
+.member-info { flex:1; }
+.member-name { font-size:15px; font-weight:700; margin-bottom:3px; }
+.member-uid  { font-size:12px; color:var(--text2); font-family:monospace; }
+.member-actions { display:flex; gap:8px; }
+.btn-member-edit { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:7px 12px; font-size:12px; font-weight:600; cursor:pointer; color:var(--text); }
+.btn-member-del  { background:var(--red-bg); border:1px solid var(--red); border-radius:8px; padding:7px 12px; font-size:12px; font-weight:600; cursor:pointer; color:var(--red); }
+.btn-member-edit:active { background:var(--border); }
+.btn-member-del:active  { opacity:0.7; }
+
+/* -- VERIFY STATUS -- */
+.verify-status { text-align:center; font-size:13px; font-weight:600; min-height:20px; margin-top:4px; }
+.verify-ok  { color:var(--green); }
+.verify-err { color:var(--red); }
+
+/* -- SAVE BUTTON -- */
+.btn-save { background:var(--green); box-shadow:0 4px 12px rgba(16,185,129,0.3); }
+.btn-save:active { background:#0D9E74; }
+
+/* -- SCAN MEMBERS ROW -- */
+.scan-members-wrap { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; margin-bottom:12px; }
+.scan-members-label { font-size:11px; font-weight:700; color:var(--text2); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:10px; }
+.scan-members-chips { display:flex; flex-wrap:wrap; gap:8px; }
+.member-chip {
+  display:flex; align-items:center; gap:6px;
+  background:var(--bg); border:1.5px solid var(--border);
+  border-radius:100px; padding:6px 12px;
+  font-size:12px; font-weight:600; color:var(--text);
+}
+.member-chip-dot { width:7px; height:7px; border-radius:50%; background:var(--green); }
+.member-chip.scanning { border-color:var(--accent); color:var(--accent); }
+.member-chip.done     { border-color:var(--green);  color:var(--green); }
+.member-chip.error    { border-color:var(--red);    color:var(--red); }
+
+/* -- SCAN PROGRESS -- */
+.scan-progress-wrap { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; margin-bottom:14px; }
+.scan-progress-title { font-size:13px; font-weight:700; margin-bottom:10px; }
+.scan-progress-item { display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--border); font-size:13px; }
+.scan-progress-item:last-child { border-bottom:none; }
+.progress-spinner { width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; flex-shrink:0; }
+.progress-check { color:var(--green); font-weight:700; flex-shrink:0; }
+.progress-error { color:var(--red); font-weight:700; flex-shrink:0; }
+
+/* -- MEMBER BREAKDOWN -- */
+.breakdown-title { font-size:13px; font-weight:700; color:var(--text2); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:12px; }
+.breakdown-card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; margin-bottom:10px; }
+.breakdown-member-row { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.breakdown-avatar { width:32px; height:32px; border-radius:10px; background:linear-gradient(135deg,var(--accent),var(--accent-dark)); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; color:white; flex-shrink:0; }
+.breakdown-name { font-size:14px; font-weight:700; flex:1; }
+.breakdown-avail-count { font-size:12px; color:var(--green); font-weight:600; }
+.breakdown-dates { display:flex; flex-wrap:wrap; gap:6px; }
+.breakdown-date-chip { background:var(--green-bg); color:var(--green); border:1px solid rgba(16,185,129,0.3); border-radius:8px; padding:5px 10px; font-size:11px; font-weight:700; cursor:pointer; transition:all 0.15s; }
+.breakdown-date-chip:active { background:var(--green); color:white; }
+
+/* -- SHEET MEMBER TAG -- */
+.sheet-member-tag { font-size:10px; font-weight:700; background:var(--blue-bg); color:var(--blue); padding:2px 8px; border-radius:100px; white-space:nowrap; }

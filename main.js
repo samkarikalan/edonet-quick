@@ -3,22 +3,22 @@ var API_BASE = 'https://edonet-quick.onrender.com';
 var NAV = [
   { screen:'home',    icon:'Home',    label:'Home' },
   { screen:'scan',    icon:'Scan',    label:'Scan' },
-  { screen:'lottery', icon:'Lottery', label:'Lottery' },
+  { screen:'members', icon:'Members', label:'Members' },
   { screen:'results', icon:'Results', label:'Results' },
 ];
 
 var SLOT_TIMES = [
-  { time:'09:00 - 11:00', duration:'2 hours',   key:'0900' },
-  { time:'11:00 - 13:00', duration:'2 hours',   key:'1100' },
-  { time:'13:00 - 15:00', duration:'2 hours',   key:'1300' },
-  { time:'15:00 - 17:00', duration:'2 hours',   key:'1500' },
-  { time:'17:00 - 19:00', duration:'2 hours',   key:'1700' },
-  { time:'19:00 - 21:00', duration:'2 hours',   key:'1900' },
+  { time:'09:00 - 11:00', duration:'2 hours', key:'0900' },
+  { time:'11:00 - 13:00', duration:'2 hours', key:'1100' },
+  { time:'13:00 - 15:00', duration:'2 hours', key:'1300' },
+  { time:'15:00 - 17:00', duration:'2 hours', key:'1500' },
+  { time:'17:00 - 19:00', duration:'2 hours', key:'1700' },
+  { time:'19:00 - 21:00', duration:'2 hours', key:'1900' },
 ];
 
 var state = {
-  userId: '',
-  token: null,
+  adminId: '',
+  adminToken: null,
   results: [],
   filter: 'all',
   scanData: {},
@@ -27,15 +27,36 @@ var state = {
   selectedDate: '',
   selectedFacility: '',
   selectedSlot: null,
-  prevScreen: 'scan',
+  members: [],
 };
 
+// -- MEMBER STORAGE --
+function loadMembers() {
+  try {
+    var raw = localStorage.getItem('eq_members');
+    state.members = raw ? JSON.parse(raw) : [];
+  } catch(e) { state.members = []; }
+}
+
+function saveMembers() {
+  try { localStorage.setItem('eq_members', JSON.stringify(state.members)); } catch(e) {}
+}
+
+function getMemberById(id) {
+  for (var i = 0; i < state.members.length; i++) {
+    if (state.members[i].id === id) return state.members[i];
+  }
+  return null;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-  fetch('https://edonet-quick.onrender.com/').catch(function(){});
+  fetch(API_BASE + '/').catch(function(){});
+  loadMembers();
   buildNavs();
   restoreCreds();
   attachEvents();
   updateCalStatus();
+  updateMemberCount();
 });
 
 function buildNavs() {
@@ -51,31 +72,39 @@ function buildNavs() {
 
 function attachEvents() {
   document.body.addEventListener('click', function(e) {
-    var navEl    = e.target.closest('[data-nav]');
-    var chipEl   = e.target.closest('.chip');
-    var actionEl = e.target.closest('[data-action]');
-    var calDay   = e.target.closest('.cal-day');
-    var overlay  = e.target.closest('.bottom-sheet-overlay');
+    var navEl     = e.target.closest('[data-nav]');
+    var chipEl    = e.target.closest('.chip');
+    var calDay    = e.target.closest('.cal-day');
+    var overlay   = e.target.closest('.bottom-sheet-overlay');
     var sheetItem = e.target.closest('.sheet-item');
     var slotCard  = e.target.closest('.slot-card');
+    var editBtn   = e.target.closest('.btn-member-edit');
+    var delBtn    = e.target.closest('.btn-member-del');
+    var dateChip  = e.target.closest('.breakdown-date-chip');
 
     if (navEl)     { goTo(navEl.dataset.nav); return; }
-    if (actionEl)  { showToast('Coming soon'); return; }
     if (chipEl && chipEl.dataset.range)  { selectRangeChip(chipEl); return; }
     if (chipEl && chipEl.dataset.filter) { selectFilterChip(chipEl); return; }
     if (calDay && calDay.dataset.date)   { openSheet(calDay.dataset.date); return; }
     if (overlay)   { closeSheet(); return; }
     if (sheetItem && sheetItem.dataset.facility) { openFacility(sheetItem.dataset.facility); return; }
     if (slotCard && slotCard.dataset.slot) { openConfirm(slotCard.dataset.slot); return; }
+    if (editBtn)   { editMember(editBtn.dataset.id); return; }
+    if (delBtn)    { deleteMember(delBtn.dataset.id); return; }
+    if (dateChip)  { openSheetForMember(dateChip.dataset.date, dateChip.dataset.member); return; }
   });
 
   document.getElementById('btn-login').addEventListener('click', doLogin);
   document.getElementById('input-password').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
   document.getElementById('btn-logout').addEventListener('click', doLogout);
+  document.getElementById('btn-add-member').addEventListener('click', openAddMember);
+  document.getElementById('add-member-back').addEventListener('click', function() { goTo('members'); });
+  document.getElementById('btn-verify-member').addEventListener('click', verifyMember);
+  document.getElementById('btn-save-member').addEventListener('click', saveMember);
   document.getElementById('btn-scan').addEventListener('click', doScan);
   document.getElementById('cal-prev').addEventListener('click', function() { changeMonth(-1); });
   document.getElementById('cal-next').addEventListener('click', function() { changeMonth(1); });
-  document.getElementById('facility-back').addEventListener('click', function() { closeSheet(); goTo('scan'); });
+  document.getElementById('facility-back').addEventListener('click', function() { openSheet(state.selectedDate); goTo('scan'); });
   document.getElementById('confirm-back').addEventListener('click', function() { goTo('facility'); });
   document.getElementById('btn-confirm-book').addEventListener('click', doBook);
   document.getElementById('btn-cancel-book').addEventListener('click', function() { goTo('facility'); });
@@ -83,14 +112,16 @@ function attachEvents() {
 }
 
 function goTo(screen) {
-  if (screen !== 'login' && !state.token) { showToast('Please login first'); return; }
+  if (screen !== 'login' && !state.adminToken) { showToast('Please login first'); return; }
   document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
   document.getElementById('screen-' + screen).classList.add('active');
   window.scrollTo(0, 0);
+  if (screen === 'members') renderMembers();
+  if (screen === 'scan')    renderScanMemberChips();
   if (screen === 'results') loadResults();
 }
 
-/* -- LOGIN -- */
+// -- LOGIN --
 async function doLogin() {
   var uid = document.getElementById('input-userid').value.trim();
   var pw  = document.getElementById('input-password').value.trim();
@@ -105,10 +136,18 @@ async function doLogin() {
     });
     var data = await res.json();
     if (res.ok && data.success) {
-      state.userId = uid;
-      state.token  = data.session_token;
+      state.adminId    = uid;
+      state.adminToken = data.session_token;
       if (document.getElementById('toggle-remember').checked) saveCreds(uid, pw);
       document.getElementById('home-userid-display').textContent = uid;
+
+      // Auto-add admin as first member if not already in list
+      var exists = state.members.some(function(m) { return m.uid === uid; });
+      if (!exists) {
+        state.members.push({ id: Date.now().toString(), name: 'Me (' + uid + ')', uid: uid, pw: pw });
+        saveMembers();
+      }
+      updateMemberCount();
       goTo('home');
       showToast('Logged in successfully');
     } else {
@@ -122,8 +161,8 @@ async function doLogin() {
 }
 
 function doLogout() {
-  state.userId = '';
-  state.token  = null;
+  state.adminId    = '';
+  state.adminToken = null;
   goTo('login');
 }
 
@@ -136,40 +175,232 @@ function updateCalStatus() {
   else                            el.textContent = 'No window open - Opens 1st of next month';
 }
 
-/* -- SCAN -- */
+function updateMemberCount() {
+  var count = state.members.length;
+  var el1 = document.getElementById('tile-member-count');
+  var el2 = document.getElementById('member-strip-count');
+  if (el1) el1.textContent = count;
+  if (el2) el2.textContent = count + ' member' + (count === 1 ? '' : 's');
+}
+
+// -- MEMBERS --
+function renderMembers() {
+  var list  = document.getElementById('member-list');
+  var empty = document.getElementById('member-empty');
+  updateMemberCount();
+  if (!state.members.length) {
+    list.innerHTML  = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = state.members.map(function(m) {
+    var initial = m.name ? m.name[0].toUpperCase() : '?';
+    return '<div class="member-card">' +
+      '<div class="member-avatar">' + initial + '</div>' +
+      '<div class="member-info">' +
+        '<div class="member-name">' + m.name + '</div>' +
+        '<div class="member-uid">ID: ' + m.uid + '</div>' +
+      '</div>' +
+      '<div class="member-actions">' +
+        '<button class="btn-member-edit" data-id="' + m.id + '">Edit</button>' +
+        '<button class="btn-member-del"  data-id="' + m.id + '">Del</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function openAddMember() {
+  document.getElementById('add-member-title').textContent = 'Add Member';
+  document.getElementById('member-name-input').value = '';
+  document.getElementById('member-uid-input').value  = '';
+  document.getElementById('member-pw-input').value   = '';
+  document.getElementById('edit-member-id').value    = '';
+  document.getElementById('verify-status').textContent = '';
+  document.getElementById('verify-status').className = 'verify-status';
+  goTo('add-member');
+}
+
+function editMember(id) {
+  var m = getMemberById(id);
+  if (!m) return;
+  document.getElementById('add-member-title').textContent = 'Edit Member';
+  document.getElementById('member-name-input').value = m.name;
+  document.getElementById('member-uid-input').value  = m.uid;
+  document.getElementById('member-pw-input').value   = m.pw;
+  document.getElementById('edit-member-id').value    = id;
+  document.getElementById('verify-status').textContent = '';
+  document.getElementById('verify-status').className = 'verify-status';
+  goTo('add-member');
+}
+
+function deleteMember(id) {
+  state.members = state.members.filter(function(m) { return m.id !== id; });
+  saveMembers();
+  renderMembers();
+  showToast('Member removed');
+}
+
+async function verifyMember() {
+  var uid = document.getElementById('member-uid-input').value.trim();
+  var pw  = document.getElementById('member-pw-input').value.trim();
+  var statusEl = document.getElementById('verify-status');
+  if (!uid || !pw) { statusEl.textContent = 'Enter User ID and password first'; statusEl.className = 'verify-status verify-err'; return; }
+  setBtnLoading('btn-verify-member', 'verify-label', 'verify-spinner', true);
+  statusEl.textContent = 'Verifying...';
+  statusEl.className   = 'verify-status';
+  try {
+    var res  = await fetch(API_BASE + '/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: uid, password: pw })
+    });
+    var data = await res.json();
+    if (res.ok && data.success) {
+      statusEl.textContent = 'Login verified successfully';
+      statusEl.className   = 'verify-status verify-ok';
+    } else {
+      statusEl.textContent = data.error || 'Login failed';
+      statusEl.className   = 'verify-status verify-err';
+    }
+  } catch(e) {
+    statusEl.textContent = 'Cannot reach server';
+    statusEl.className   = 'verify-status verify-err';
+  } finally {
+    setBtnLoading('btn-verify-member', 'verify-label', 'verify-spinner', false);
+  }
+}
+
+function saveMember() {
+  var name = document.getElementById('member-name-input').value.trim();
+  var uid  = document.getElementById('member-uid-input').value.trim();
+  var pw   = document.getElementById('member-pw-input').value.trim();
+  var editId = document.getElementById('edit-member-id').value;
+  if (!name || !uid || !pw) { showToast('Fill in all fields'); return; }
+  if (editId) {
+    for (var i = 0; i < state.members.length; i++) {
+      if (state.members[i].id === editId) {
+        state.members[i].name = name;
+        state.members[i].uid  = uid;
+        state.members[i].pw   = pw;
+        break;
+      }
+    }
+    showToast('Member updated');
+  } else {
+    var dup = state.members.some(function(m) { return m.uid === uid; });
+    if (dup) { showToast('Member with this ID already exists'); return; }
+    state.members.push({ id: Date.now().toString(), name: name, uid: uid, pw: pw });
+    showToast('Member added');
+  }
+  saveMembers();
+  updateMemberCount();
+  goTo('members');
+}
+
+// -- SCAN --
+function renderScanMemberChips() {
+  var wrap = document.getElementById('scan-members-wrap');
+  var chips = document.getElementById('scan-members-chips');
+  if (!state.members.length) {
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = 'block';
+  chips.innerHTML = state.members.map(function(m) {
+    return '<div class="member-chip"><div class="member-chip-dot"></div>' + m.name + '</div>';
+  }).join('');
+}
+
 function selectRangeChip(chip) {
   document.querySelectorAll('[data-range]').forEach(function(c) { c.classList.remove('chip-selected'); });
   chip.classList.add('chip-selected');
 }
 
 async function doScan() {
+  if (!state.members.length) {
+    showToast('Add members first');
+    goTo('members');
+    return;
+  }
   var rangeChip = document.querySelector('[data-range].chip-selected');
   var days = rangeChip ? parseInt(rangeChip.dataset.range) : 14;
+
   setBtnLoading('btn-scan', 'scan-label', 'scan-spinner', true);
-  document.getElementById('scan-loader').style.display = 'block';
-  document.getElementById('scan-empty').style.display  = 'none';
-  document.getElementById('cal-wrap').style.display    = 'none';
-  try {
-    var res  = await fetch(API_BASE + '/api/scan', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_token: state.token, days: days })
-    });
-    var data = await res.json();
-    state.scanData = data.availability || makeMockData(days);
-  } catch(e) {
-    state.scanData = makeMockData(days);
-  } finally {
-    document.getElementById('scan-loader').style.display = 'none';
-    setBtnLoading('btn-scan', 'scan-label', 'scan-spinner', false);
+  document.getElementById('scan-loader').style.display  = 'block';
+  document.getElementById('scan-empty').style.display   = 'none';
+  document.getElementById('cal-wrap').style.display     = 'none';
+  document.getElementById('member-breakdown').style.display = 'none';
+
+  // Show progress panel
+  var progressWrap = document.getElementById('scan-progress');
+  progressWrap.style.display = 'block';
+  progressWrap.innerHTML = '<div class="scan-progress-title">Scanning members...</div>' +
+    state.members.map(function(m) {
+      return '<div class="scan-progress-item" id="prog-' + m.id + '">' +
+        '<div class="progress-spinner"></div>' +
+        '<span>' + m.name + '</span></div>';
+    }).join('');
+
+  // Combined scan data: date -> [ { facility, status, slots, memberName, memberId } ]
+  var combined = {};
+
+  for (var i = 0; i < state.members.length; i++) {
+    var m = state.members[i];
+    var progEl = document.getElementById('prog-' + m.id);
+    try {
+      // Login as this member
+      var loginRes  = await fetch(API_BASE + '/api/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: m.uid, password: m.pw })
+      });
+      var loginData = await loginRes.json();
+
+      if (!loginData.success) throw new Error('Login failed');
+
+      // Scan
+      var scanRes  = await fetch(API_BASE + '/api/scan', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_token: loginData.session_token, days: days })
+      });
+      var scanData = await scanRes.json();
+      var avail    = scanData.availability || makeMockData(days, m.name);
+
+      // Merge into combined
+      Object.keys(avail).forEach(function(date) {
+        if (!combined[date]) combined[date] = [];
+        avail[date].forEach(function(slot) {
+          combined[date].push({
+            facility:   slot.name || slot.facility,
+            status:     slot.status,
+            slots:      slot.slots || [],
+            memberName: m.name,
+            memberId:   m.id,
+          });
+        });
+      });
+
+      if (progEl) { progEl.innerHTML = '<div class="progress-check">OK</div><span>' + m.name + '</span>'; }
+    } catch(e) {
+      if (progEl) { progEl.innerHTML = '<div class="progress-error">X</div><span>' + m.name + ' - failed</span>'; }
+    }
   }
+
+  state.scanData = combined;
   state.calYear  = new Date().getFullYear();
   state.calMonth = new Date().getMonth();
+
+  document.getElementById('scan-loader').style.display = 'none';
+  setBtnLoading('btn-scan', 'scan-label', 'scan-spinner', false);
+
   renderCalendar();
-  document.getElementById('cal-wrap').style.display = 'block';
+  renderMemberBreakdown();
+  document.getElementById('cal-wrap').style.display           = 'block';
+  document.getElementById('member-breakdown').style.display   = 'block';
+  progressWrap.style.display = 'none';
   showToast('Scan complete');
 }
 
-function makeMockData(days) {
+function makeMockData(days, memberName) {
   var data = {};
   var today = new Date();
   var facilities = ['Ichinoe Community Hall','Community Plaza Koto','Matsue Kumin Plaza','Bunka Sports Plaza','Hirai Community Hall'];
@@ -177,7 +408,7 @@ function makeMockData(days) {
     var d = new Date(today);
     d.setDate(today.getDate() + i);
     var key   = d.toISOString().slice(0, 10);
-    var count = Math.floor(Math.random() * 4) + 1;
+    var count = Math.floor(Math.random() * 3) + 1;
     data[key] = [];
     for (var j = 0; j < count; j++) {
       var status = Math.random() > 0.3 ? 'available' : 'partial';
@@ -190,7 +421,7 @@ function makeMockData(days) {
   return data;
 }
 
-/* -- CALENDAR -- */
+// -- CALENDAR --
 function changeMonth(dir) {
   state.calMonth += dir;
   if (state.calMonth > 11) { state.calMonth = 0;  state.calYear++; }
@@ -212,24 +443,24 @@ function renderCalendar() {
     html += '<div class="cal-day empty"><div class="cal-day-num"></div></div>';
   }
   for (var d = 1; d <= daysInMonth; d++) {
-    var dateObj = new Date(year, month, d); dateObj.setHours(0,0,0,0);
-    var key     = dateObj.toISOString().slice(0, 10);
+    var p = [year, month + 1, d];
+    var dateObj = new Date(p[0], p[1]-1, p[2]); dateObj.setHours(0,0,0,0);
+    var key     = p[0] + '-' + (p[1] < 10 ? '0'+p[1] : p[1]) + '-' + (p[2] < 10 ? '0'+p[2] : p[2]);
     var isToday = dateObj.getTime() === today.getTime();
     var isPast  = dateObj.getTime() < today.getTime();
-    var slots   = state.scanData[key];
-    var hasData = slots !== undefined;
-    var avail   = hasData ? slots.filter(function(s) { return s.status === 'available'; }).length : 0;
-    var partial = hasData ? slots.filter(function(s) { return s.status === 'partial'; }).length : 0;
-    var total   = hasData ? slots.length : 0;
+    var slots   = state.scanData[key] || [];
+    var avail   = slots.filter(function(s) { return s.status === 'available'; }).length;
+    var partial = slots.filter(function(s) { return s.status === 'partial'; }).length;
+    var total   = slots.length;
     var dotColor = ''; var countText = ''; var clickable = false;
-    if (hasData && total > 0 && !isPast) {
+    if (total > 0 && !isPast) {
       clickable = true;
-      if (avail > 0)        { dotColor = 'dot-green';  countText = avail + (avail === 1 ? ' facility' : ' facilities'); }
-      else if (partial > 0) { dotColor = 'dot-yellow'; countText = partial + ' partial'; }
-    } else if (hasData && total === 0 && !isPast) {
+      if (avail > 0)        { dotColor = 'dot-green';  countText = avail + (avail===1?' fac':' fac'); }
+      else if (partial > 0) { dotColor = 'dot-yellow'; countText = partial + ' part'; }
+    } else if (Object.keys(state.scanData).indexOf(key) >= 0 && total === 0 && !isPast) {
       dotColor = 'dot-grey';
     }
-    var classes  = 'cal-day' + (isToday ? ' today' : '') + (isPast ? ' past' : '') + (clickable ? ' has-slots' : '');
+    var classes  = 'cal-day' + (isToday?' today':'') + (isPast?' past':'') + (clickable?' has-slots':'');
     var dataAttr = clickable ? ' data-date="' + key + '"' : '';
     html += '<div class="' + classes + '"' + dataAttr + '>' +
       '<div class="cal-day-num">' + d + '</div>' +
@@ -240,31 +471,74 @@ function renderCalendar() {
   grid.innerHTML = html;
 }
 
-/* -- SHEET -- */
+// -- MEMBER BREAKDOWN --
+function renderMemberBreakdown() {
+  var list = document.getElementById('breakdown-list');
+  // Group by member
+  var memberDates = {};
+  Object.keys(state.scanData).forEach(function(date) {
+    state.scanData[date].forEach(function(slot) {
+      var id = slot.memberId;
+      if (!memberDates[id]) memberDates[id] = { name: slot.memberName, dates: [] };
+      if (memberDates[id].dates.indexOf(date) < 0) memberDates[id].dates.push(date);
+    });
+  });
+
+  if (!Object.keys(memberDates).length) {
+    list.innerHTML = '<div class="empty-text" style="padding:16px;text-align:center;">No availability found</div>';
+    return;
+  }
+
+  list.innerHTML = Object.keys(memberDates).map(function(id) {
+    var m     = memberDates[id];
+    var dates = m.dates.sort();
+    var initial = m.name ? m.name[0].toUpperCase() : '?';
+    var datesHtml = dates.slice(0, 10).map(function(date) {
+      var p = date.split('-');
+      var d2 = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+      var dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      var monNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      var label = dayNames[d2.getDay()] + ' ' + monNames[d2.getMonth()] + ' ' + d2.getDate();
+      return '<div class="breakdown-date-chip" data-date="' + date + '" data-member="' + id + '">' + label + '</div>';
+    }).join('');
+    return '<div class="breakdown-card">' +
+      '<div class="breakdown-member-row">' +
+        '<div class="breakdown-avatar">' + initial + '</div>' +
+        '<div class="breakdown-name">' + m.name + '</div>' +
+        '<div class="breakdown-avail-count">' + dates.length + ' days</div>' +
+      '</div>' +
+      '<div class="breakdown-dates">' + datesHtml + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// -- SHEET --
 function openSheet(dateStr) {
   state.selectedDate = dateStr;
   var slots  = state.scanData[dateStr] || [];
-  var parts  = dateStr.split('-'); var d = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
-  var days   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var label  = days[d.getDay()] + ', ' + months[d.getMonth()] + ' ' + d.getDate();
+  var p      = dateStr.split('-');
+  var d      = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+  var dayN   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var monN   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var label  = dayN[d.getDay()] + ', ' + monN[d.getMonth()] + ' ' + d.getDate();
   document.getElementById('sheet-date').textContent  = label;
   var avail = slots.filter(function(s) { return s.status !== 'none'; });
-  document.getElementById('sheet-count').textContent = avail.length + ' facilit' + (avail.length === 1 ? 'y' : 'ies') + ' available';
+  document.getElementById('sheet-count').textContent = avail.length + ' slot' + (avail.length===1?'':'s') + ' available';
   var list = document.getElementById('sheet-list');
   if (!avail.length) {
     list.innerHTML = '<div style="padding:20px;text-align:center;color:#9CA3AF;">No availability on this date</div>';
   } else {
     list.innerHTML = avail.map(function(s) {
       var dotClass = s.status === 'available' ? 'dot-green' : 'dot-yellow';
-      var detail   = s.status === 'available' ? 'Available' : 'Partially available';
-      return '<div class="sheet-item" data-facility="' + s.name + '">' +
+      var detail   = s.status === 'available' ? 'Available' : 'Partial';
+      return '<div class="sheet-item" data-facility="' + s.facility + '">' +
         '<div class="sheet-item-dot ' + dotClass + '"></div>' +
         '<div class="sheet-item-info">' +
-          '<div class="sheet-item-name">' + s.name + '</div>' +
-          '<div class="sheet-item-detail">' + detail + ' - Badminton</div>' +
+          '<div class="sheet-item-name">' + s.facility + '</div>' +
+          '<div class="sheet-item-detail">' + detail + ' - ' + s.memberName + '</div>' +
         '</div>' +
-        '<div class="sheet-item-arrow">?</div>' +
+        '<div class="sheet-member-tag">' + s.memberName + '</div>' +
+        '<div class="sheet-item-arrow">></div>' +
       '</div>';
     }).join('');
   }
@@ -272,152 +546,135 @@ function openSheet(dateStr) {
   document.getElementById('bottom-sheet').classList.add('show');
 }
 
+function openSheetForMember(date, memberId) {
+  openSheet(date);
+}
+
 function closeSheet() {
   document.getElementById('sheet-overlay').classList.remove('show');
   document.getElementById('bottom-sheet').classList.remove('show');
 }
 
-/* -- FACILITY DETAIL -- */
+// -- FACILITY DETAIL --
 function openFacility(facilityName) {
   state.selectedFacility = facilityName;
   closeSheet();
-
   var dateStr  = state.selectedDate;
-  var slots    = state.scanData[dateStr] || [];
+  var allSlots = state.scanData[dateStr] || [];
   var facility = null;
-  for (var i = 0; i < slots.length; i++) {
-    if (slots[i].name === facilityName) { facility = slots[i]; break; }
+  for (var i = 0; i < allSlots.length; i++) {
+    if (allSlots[i].facility === facilityName) { facility = allSlots[i]; break; }
   }
-
-  var parts  = dateStr.split('-'); var d = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
-  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var days   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  var dateLabel = days[d.getDay()] + ' ' + months[d.getMonth()] + ' ' + d.getDate();
-
-  document.getElementById('facility-title').textContent     = facilityName;
-  document.getElementById('facility-date-sub').textContent  = dateLabel + ' - Badminton';
+  var p     = dateStr.split('-');
+  var d     = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+  var monN  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var dayN  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var dateLabel = dayN[d.getDay()] + ' ' + monN[d.getMonth()] + ' ' + d.getDate();
+  document.getElementById('facility-title').textContent    = facilityName;
+  document.getElementById('facility-date-sub').textContent = dateLabel + ' - Badminton';
   document.getElementById('facility-info-name').textContent = facilityName;
-
   var badge = document.getElementById('facility-status-badge');
   if (facility && facility.status === 'available') {
-    badge.textContent = 'Available';
-    badge.style.background = '#D1FAE5';
-    badge.style.color = '#10B981';
+    badge.textContent = 'Available'; badge.style.background = '#D1FAE5'; badge.style.color = '#10B981';
   } else {
-    badge.textContent = 'Partial';
-    badge.style.background = '#FEF3C7';
-    badge.style.color = '#F59E0B';
+    badge.textContent = 'Partial';   badge.style.background = '#FEF3C7'; badge.style.color = '#F59E0B';
   }
-
   var timeSlots = facility && facility.slots ? facility.slots : [];
+  var memberName = facility ? facility.memberName : '';
+  var memberId   = facility ? facility.memberId   : '';
   var list = document.getElementById('slots-list');
-
   if (!timeSlots.length) {
-    list.innerHTML = '<div class="empty-state"><div class="empty-icon">?</div><div class="empty-text">No time slot data yet.<br>Real data coming after backend mapping.</div></div>';
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">No slots</div><div class="empty-text">No detailed slot data yet.</div></div>';
   } else {
     list.innerHTML = timeSlots.map(function(s) {
-      var cls       = s.status === 'available' ? 'slot-available' : 'slot-partial';
-      var pillCls   = s.status === 'available' ? 'pill-available' : 'pill-partial';
-      var pillLabel = s.status === 'available' ? 'Available' : 'Partial';
-      var slotData  = JSON.stringify({ time: s.time, key: s.key, facility: facilityName, date: dateStr });
+      var cls     = s.status === 'available' ? 'slot-available' : 'slot-partial';
+      var pillCls = s.status === 'available' ? 'pill-available' : 'pill-partial';
+      var pillLbl = s.status === 'available' ? 'Available' : 'Partial';
+      var slotObj = { time: s.time, key: s.key, facility: facilityName, date: dateStr, memberName: memberName, memberId: memberId };
+      var slotData = JSON.stringify(slotObj).replace(/'/g, '&apos;');
       return '<div class="slot-card ' + cls + '" data-slot=\'' + slotData + '\'>' +
         '<div class="slot-time-wrap">' +
           '<div class="slot-time">' + s.time + '</div>' +
-          '<div class="slot-duration">' + s.duration + '</div>' +
+          '<div class="slot-duration">' + s.duration + ' - ' + memberName + '</div>' +
         '</div>' +
-        '<div class="slot-status-pill ' + pillCls + '">' + pillLabel + '</div>' +
-        '<div class="slot-arrow">?</div>' +
+        '<div class="slot-status-pill ' + pillCls + '">' + pillLbl + '</div>' +
+        '<div class="slot-arrow">></div>' +
       '</div>';
     }).join('');
   }
-
   goTo('facility');
 }
 
-/* -- CONFIRM BOOKING -- */
+// -- CONFIRM --
 function openConfirm(slotDataStr) {
   var slot = JSON.parse(slotDataStr);
   state.selectedSlot = slot;
-
-  var parts3 = slot.date.split('-'); var d = new Date(parseInt(parts3[0]), parseInt(parts3[1])-1, parseInt(parts3[2]));
-  var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  var days   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  var dateLabel = days[d.getDay()] + ', ' + months[d.getMonth()] + ' ' + d.getDate();
-
+  var p     = slot.date.split('-');
+  var d     = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+  var monN  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var dayN  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var dateLabel = dayN[d.getDay()] + ', ' + monN[d.getMonth()] + ' ' + d.getDate();
   document.getElementById('confirm-facility').textContent = slot.facility;
   document.getElementById('confirm-date').textContent     = dateLabel;
   document.getElementById('confirm-time').textContent     = slot.time;
-  document.getElementById('confirm-userid').textContent   = state.userId;
-
+  document.getElementById('confirm-member').textContent   = slot.memberName + ' (ID: ' + (getMemberById(slot.memberId) ? getMemberById(slot.memberId).uid : '') + ')';
   goTo('confirm');
 }
 
-/* -- BOOK -- */
 async function doBook() {
   var slot = state.selectedSlot;
   if (!slot) return;
-
+  var member = getMemberById(slot.memberId);
   setBtnLoading('btn-confirm-book', 'confirm-label', 'confirm-spinner', true);
-
   try {
+    var loginRes  = await fetch(API_BASE + '/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: member ? member.uid : '', password: member ? member.pw : '' })
+    });
+    var loginData = await loginRes.json();
+    if (!loginData.success) throw new Error('Login failed for member');
     var res  = await fetch(API_BASE + '/api/book', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        session_token: state.token,
-        facility: slot.facility,
-        date: slot.date,
-        time_slot: slot.time,
-        purpose: 'Badminton'
-      })
+      body: JSON.stringify({ session_token: loginData.session_token, facility: slot.facility, date: slot.date, time_slot: slot.time, purpose: 'Badminton' })
     });
     var data = await res.json();
-
-    if (res.ok && data.success) {
-      showSuccess(slot);
-    } else {
-      showToast(data.error || 'Booking failed');
-      setBtnLoading('btn-confirm-book', 'confirm-label', 'confirm-spinner', false);
-    }
+    if (res.ok && data.success) { showSuccess(slot); }
+    else { showToast(data.error || 'Booking failed'); }
   } catch(e) {
-    // Dev mode - show success UI
-    showSuccess(slot);
+    showSuccess(slot); // Dev mode
+  } finally {
     setBtnLoading('btn-confirm-book', 'confirm-label', 'confirm-spinner', false);
   }
 }
 
 function showSuccess(slot) {
-  var parts4 = slot.date.split('-'); var d = new Date(parseInt(parts4[0]), parseInt(parts4[1])-1, parseInt(parts4[2]));
-  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var days   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  var dateLabel = days[d.getDay()] + ' ' + months[d.getMonth()] + ' ' + d.getDate();
-
+  var p     = slot.date.split('-');
+  var d     = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+  var monN  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var dayN  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var dateLabel = dayN[d.getDay()] + ' ' + monN[d.getMonth()] + ' ' + d.getDate();
   document.getElementById('success-detail').textContent = 'Booking submitted for ' + dateLabel;
   document.getElementById('success-summary').innerHTML =
     '<div class="success-row"><span class="success-key">Facility</span><span class="success-val">' + slot.facility + '</span></div>' +
     '<div class="success-row"><span class="success-key">Date</span><span class="success-val">' + dateLabel + '</span></div>' +
     '<div class="success-row"><span class="success-key">Time</span><span class="success-val">' + slot.time + '</span></div>' +
-    '<div class="success-row"><span class="success-key">Purpose</span><span class="success-val">Badminton</span></div>';
-
+    '<div class="success-row"><span class="success-key">Member</span><span class="success-val">' + slot.memberName + '</span></div>';
   goTo('success');
 }
 
-/* -- RESULTS -- */
+// -- RESULTS --
 async function loadResults() {
   var loader = document.getElementById('results-loader');
   loader.style.display = 'block';
   try {
     var res  = await fetch(API_BASE + '/api/results', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_token: state.token })
+      body: JSON.stringify({ session_token: state.adminToken })
     });
     var data = await res.json();
     state.results = data.results || [];
-  } catch(e) {
-    state.results = [];
-  } finally {
-    loader.style.display = 'none';
-    renderResults();
-  }
+  } catch(e) { state.results = []; }
+  finally { loader.style.display = 'none'; renderResults(); }
 }
 
 function selectFilterChip(chip) {
@@ -430,30 +687,26 @@ function selectFilterChip(chip) {
 function renderResults() {
   var filtered = state.filter === 'all' ? state.results : state.results.filter(function(r) { return r.status === state.filter; });
   var list = document.getElementById('result-list');
-  if (!filtered.length) {
-    list.innerHTML = '<div class="empty-state"><div class="empty-icon">No results yet</div></div>';
-    return;
-  }
+  if (!filtered.length) { list.innerHTML = '<div class="empty-state"><div class="empty-text">No results yet</div></div>'; return; }
   var labels = { won:'Won', lost:'Not Won', pending:'Pending' };
   list.innerHTML = filtered.map(function(r) {
     return '<div class="result-card">' +
       '<div class="result-dot dot-' + r.status + '"></div>' +
-      '<div class="result-body">' +
-        '<div class="result-facility">' + r.facility + '</div>' +
-        '<div class="result-meta">' + r.purpose + ' - ' + r.date + '</div>' +
-      '</div>' +
+      '<div class="result-body"><div class="result-facility">' + r.facility + '</div><div class="result-meta">' + r.purpose + ' - ' + r.date + '</div></div>' +
       '<div class="result-tag tag-' + r.status + '">' + labels[r.status] + '</div>' +
     '</div>';
   }).join('');
 }
 
-/* -- UTILS -- */
+// -- UTILS --
 function setBtnLoading(btnId, labelId, spinnerId, loading) {
   var btn = document.getElementById(btnId);
   if (!btn) return;
   btn.disabled = loading;
-  document.getElementById(labelId).style.display  = loading ? 'none' : 'inline';
-  document.getElementById(spinnerId).style.display = loading ? 'inline-block' : 'none';
+  var lEl = document.getElementById(labelId);
+  var sEl = document.getElementById(spinnerId);
+  if (lEl) lEl.style.display = loading ? 'none' : 'inline';
+  if (sEl) sEl.style.display = loading ? 'inline-block' : 'none';
 }
 
 function showToast(msg) {

@@ -5,13 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>edonet Quick</title>
 <link rel="apple-touch-icon" href="icon.png">
+<link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="app">
 
-  <!-- LOGIN -->
-  <div class="screen active" id="screen-login">
+  <!-- SPLASH (auto-login) -->
+  <div class="screen active" id="screen-splash">
+    <div class="splash-wrap">
+      <img src="icon.png" class="splash-icon" onerror="this.style.display='none'">
+      <div class="splash-title">edonet Quick</div>
+      <div class="splash-sub">Signing in...</div>
+      <div class="splash-spinner"></div>
+    </div>
+  </div>
+
+  <!-- LOGIN (only if no saved credentials) -->
+  <div class="screen" id="screen-login">
     <div class="login-wrap">
       <div class="login-header">
         <img src="icon.png" class="app-icon-img" onerror="this.style.display='none'">
@@ -59,7 +70,9 @@
   <div class="screen" id="screen-home">
     <div class="page-wrap">
       <div class="page-header">
-        <div class="app-pill">edonet Quick</div>
+        <img src="icon.png" class="header-icon" onerror="this.style.display='none'">
+        <div class="page-title">edonet Quick</div>
+        <button class="btn-header-icon" id="btn-settings">&#9881;</button>
       </div>
       <div class="club-card">
         <div class="club-card-left">
@@ -76,7 +89,13 @@
           <div class="tile-emoji">&#128197;</div>
           <div class="tile-number" id="tile-scan-count">-</div>
           <div class="tile-title">Scan Slots</div>
-          <div class="tile-sub">Club availability</div>
+          <div class="tile-sub">Find availability</div>
+        </div>
+        <div class="tile accent-orange" data-nav="bookings">
+          <div class="tile-emoji">&#128203;</div>
+          <div class="tile-number" id="tile-bookings-count">-</div>
+          <div class="tile-title">Bookings</div>
+          <div class="tile-sub">Confirmed slots</div>
         </div>
         <div class="tile accent-green" data-nav="members">
           <div class="tile-emoji">&#128101;</div>
@@ -84,17 +103,11 @@
           <div class="tile-title">Members</div>
           <div class="tile-sub">Manage accounts</div>
         </div>
-        <div class="tile accent-purple" data-nav="results">
+        <div class="tile" data-nav="results">
           <div class="tile-emoji">&#127942;</div>
           <div class="tile-number">-</div>
           <div class="tile-title">Results</div>
           <div class="tile-sub">Lottery outcomes</div>
-        </div>
-        <div class="tile" data-nav="lottery">
-          <div class="tile-emoji">&#127922;</div>
-          <div class="tile-number">-</div>
-          <div class="tile-title">Apply Lottery</div>
-          <div class="tile-sub">New application</div>
         </div>
       </div>
       <div class="tile tile-wide" style="margin-bottom:100px;">
@@ -107,6 +120,30 @@
       </div>
     </div>
     <nav class="bottom-nav" data-screen="home"></nav>
+  </div>
+
+  <!-- BOOKINGS -->
+  <div class="screen" id="screen-bookings">
+    <div class="page-wrap">
+      <div class="page-header">
+        <div class="back-btn" data-nav="home">&#60;</div>
+        <div class="page-title">Bookings</div>
+        <button class="btn-header-refresh" id="btn-refresh-bookings">&#8635;</button>
+      </div>
+      <div class="page-sub">Confirmed reservations - all members</div>
+      <div class="loading-bar" id="bookings-loader" style="display:none;"><div class="loading-bar-fill"></div></div>
+      <div class="chips-row" style="margin-bottom:16px;">
+        <div class="chip chip-selected" data-bfilter="upcoming">Upcoming</div>
+        <div class="chip" data-bfilter="past">Past</div>
+        <div class="chip" data-bfilter="all">All</div>
+      </div>
+      <div id="bookings-list" style="margin-bottom:100px;"></div>
+      <div class="empty-state" id="bookings-empty" style="display:none;margin-bottom:100px;">
+        <div class="empty-icon">&#128203;</div>
+        <div class="empty-text">No bookings found.<br>Tap refresh to fetch from edonet.</div>
+      </div>
+    </div>
+    <nav class="bottom-nav" data-screen="bookings"></nav>
   </div>
 
   <!-- MEMBERS -->
@@ -176,7 +213,7 @@
         <div class="page-title">Scan Slots</div>
       </div>
       <div class="page-sub">Badminton availability - all members</div>
-      <div class="scan-members-wrap" id="scan-members-wrap">
+      <div class="scan-members-wrap" id="scan-members-wrap" style="display:none;">
         <div class="scan-members-label">MEMBERS TO SCAN</div>
         <div class="scan-members-chips" id="scan-members-chips"></div>
       </div>
@@ -189,7 +226,7 @@
           <div class="chip" data-range="90">All</div>
         </div>
         <button class="btn-main" id="btn-scan" style="margin-top:14px;">
-          <span id="scan-label">Scan All Members</span>
+          <span id="scan-label">Scan</span>
           <span id="scan-spinner" class="spinner" style="display:none"></span>
         </button>
       </div>
@@ -209,6 +246,7 @@
           <div class="legend-item"><div class="legend-dot dot-green"></div><span>Available</span></div>
           <div class="legend-item"><div class="legend-dot dot-yellow"></div><span>Partial</span></div>
           <div class="legend-item"><div class="legend-dot dot-grey"></div><span>Full</span></div>
+          <div class="legend-item"><div class="legend-dot dot-blue"></div><span>Booked</span></div>
         </div>
       </div>
       <div id="member-breakdown" style="display:none;margin-top:16px;margin-bottom:100px;">
@@ -224,8 +262,8 @@
     <div class="bottom-sheet" id="bottom-sheet">
       <div class="sheet-handle"></div>
       <div class="sheet-header">
-        <div class="sheet-date" id="sheet-date">Tuesday, April 14</div>
-        <div class="sheet-count" id="sheet-count">3 facilities available</div>
+        <div class="sheet-date" id="sheet-date">Date</div>
+        <div class="sheet-count" id="sheet-count">Available</div>
       </div>
       <div class="sheet-list" id="sheet-list"></div>
     </div>

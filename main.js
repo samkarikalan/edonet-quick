@@ -1,10 +1,10 @@
 var API_BASE = 'https://edonet-quick.onrender.com';
 
 var NAV = [
-  { screen:'home',    icon:'Home',    label:'Home' },
-  { screen:'scan',    icon:'Scan',    label:'Scan' },
-  { screen:'members', icon:'Members', label:'Members' },
-  { screen:'results', icon:'Results', label:'Results' },
+  { screen:'home',     icon:'Home',     label:'Home' },
+  { screen:'scan',     icon:'Scan',     label:'Scan' },
+  { screen:'bookings', icon:'Bookings', label:'Bookings' },
+  { screen:'members',  icon:'Members',  label:'Members' },
 ];
 
 var SLOT_TIMES = [
@@ -19,6 +19,9 @@ var SLOT_TIMES = [
 var state = {
   adminId: '',
   adminToken: null,
+  members: [],
+  bookings: [],
+  bookingFilter: 'upcoming',
   results: [],
   filter: 'all',
   scanData: {},
@@ -27,36 +30,32 @@ var state = {
   selectedDate: '',
   selectedFacility: '',
   selectedSlot: null,
-  members: [],
 };
 
-// -- MEMBER STORAGE --
+// -- STORAGE --
 function loadMembers() {
-  try {
-    var raw = localStorage.getItem('eq_members');
-    state.members = raw ? JSON.parse(raw) : [];
-  } catch(e) { state.members = []; }
+  try { state.members = JSON.parse(localStorage.getItem('eq_members') || '[]'); } catch(e) { state.members = []; }
 }
-
 function saveMembers() {
   try { localStorage.setItem('eq_members', JSON.stringify(state.members)); } catch(e) {}
 }
-
+function loadBookings() {
+  try { state.bookings = JSON.parse(localStorage.getItem('eq_bookings') || '[]'); } catch(e) { state.bookings = []; }
+}
+function saveBookings() {
+  try { localStorage.setItem('eq_bookings', JSON.stringify(state.bookings)); } catch(e) {}
+}
 function getMemberById(id) {
-  for (var i = 0; i < state.members.length; i++) {
-    if (state.members[i].id === id) return state.members[i];
-  }
-  return null;
+  return state.members.find(function(m) { return m.id === id; }) || null;
 }
 
+// -- INIT --
 document.addEventListener('DOMContentLoaded', function() {
-  fetch(API_BASE + '/').catch(function(){});
   loadMembers();
+  loadBookings();
   buildNavs();
-  restoreCreds();
   attachEvents();
-  updateCalStatus();
-  updateMemberCount();
+  autoLogin();
 });
 
 function buildNavs() {
@@ -68,6 +67,62 @@ function buildNavs() {
         '<div class="nav-label">' + n.label + '</div></div>';
     }).join('');
   });
+}
+
+// -- AUTO LOGIN --
+async function autoLogin() {
+  var uid = localStorage.getItem('eq_uid');
+  var pw  = localStorage.getItem('eq_pw');
+
+  if (!uid || !pw) {
+    showScreen('login');
+    return;
+  }
+
+  // Wake server silently
+  fetch(API_BASE + '/').catch(function(){});
+
+  try {
+    var res  = await fetch(API_BASE + '/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: uid, password: pw })
+    });
+    var data = await res.json();
+    if (res.ok && data.success) {
+      state.adminId    = uid;
+      state.adminToken = data.session_token;
+      ensureAdminMember(uid, pw);
+      document.getElementById('home-userid-display').textContent = uid;
+      updateMemberCount();
+      showScreen('home');
+      updateCalStatus();
+      // Auto-fetch bookings in background
+      setTimeout(function() { fetchAllBookings(false); }, 1000);
+    } else {
+      showScreen('login');
+    }
+  } catch(e) {
+    // Network error - still show home if we have cached data
+    if (uid) {
+      state.adminId = uid;
+      state.adminToken = 'offline-token';
+      document.getElementById('home-userid-display').textContent = uid;
+      updateMemberCount();
+      showScreen('home');
+      updateCalStatus();
+      showToast('Offline mode - using cached data');
+    } else {
+      showScreen('login');
+    }
+  }
+}
+
+function ensureAdminMember(uid, pw) {
+  var exists = state.members.some(function(m) { return m.uid === uid; });
+  if (!exists) {
+    state.members.push({ id: 'admin', name: 'Me (' + uid + ')', uid: uid, pw: pw });
+    saveMembers();
+  }
 }
 
 function attachEvents() {
@@ -83,20 +138,22 @@ function attachEvents() {
     var dateChip  = e.target.closest('.breakdown-date-chip');
 
     if (navEl)     { goTo(navEl.dataset.nav); return; }
-    if (chipEl && chipEl.dataset.range)  { selectRangeChip(chipEl); return; }
-    if (chipEl && chipEl.dataset.filter) { selectFilterChip(chipEl); return; }
-    if (calDay && calDay.dataset.date)   { openSheet(calDay.dataset.date); return; }
+    if (chipEl && chipEl.dataset.range)   { selectRangeChip(chipEl); return; }
+    if (chipEl && chipEl.dataset.filter)  { selectFilterChip(chipEl); return; }
+    if (chipEl && chipEl.dataset.bfilter) { selectBookingFilter(chipEl); return; }
+    if (calDay && calDay.dataset.date)    { openSheet(calDay.dataset.date); return; }
     if (overlay)   { closeSheet(); return; }
     if (sheetItem && sheetItem.dataset.facility) { openFacility(sheetItem.dataset.facility); return; }
-    if (slotCard && slotCard.dataset.slot) { openConfirm(slotCard.dataset.slot); return; }
+    if (slotCard && slotCard.dataset.slot)  { openConfirm(slotCard.dataset.slot); return; }
     if (editBtn)   { editMember(editBtn.dataset.id); return; }
     if (delBtn)    { deleteMember(delBtn.dataset.id); return; }
-    if (dateChip)  { openSheetForMember(dateChip.dataset.date, dateChip.dataset.member); return; }
+    if (dateChip)  { openSheet(dateChip.dataset.date); return; }
   });
 
   document.getElementById('btn-login').addEventListener('click', doLogin);
   document.getElementById('input-password').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
   document.getElementById('btn-logout').addEventListener('click', doLogout);
+  document.getElementById('btn-settings').addEventListener('click', function() { showToast('Settings coming soon'); });
   document.getElementById('btn-add-member').addEventListener('click', openAddMember);
   document.getElementById('add-member-back').addEventListener('click', function() { goTo('members'); });
   document.getElementById('btn-verify-member').addEventListener('click', verifyMember);
@@ -109,16 +166,21 @@ function attachEvents() {
   document.getElementById('btn-confirm-book').addEventListener('click', doBook);
   document.getElementById('btn-cancel-book').addEventListener('click', function() { goTo('facility'); });
   document.getElementById('btn-success-home').addEventListener('click', function() { goTo('home'); });
+  document.getElementById('btn-refresh-bookings').addEventListener('click', function() { fetchAllBookings(true); });
+}
+
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
+  document.getElementById('screen-' + name).classList.add('active');
+  window.scrollTo(0, 0);
 }
 
 function goTo(screen) {
-  if (screen !== 'login' && !state.adminToken) { showToast('Please login first'); return; }
-  document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
-  document.getElementById('screen-' + screen).classList.add('active');
-  window.scrollTo(0, 0);
-  if (screen === 'members') renderMembers();
-  if (screen === 'scan')    renderScanMemberChips();
-  if (screen === 'results') loadResults();
+  showScreen(screen);
+  if (screen === 'members')  renderMembers();
+  if (screen === 'scan')     renderScanMemberChips();
+  if (screen === 'bookings') renderBookings();
+  if (screen === 'results')  loadResults();
 }
 
 // -- LOGIN --
@@ -138,17 +200,16 @@ async function doLogin() {
     if (res.ok && data.success) {
       state.adminId    = uid;
       state.adminToken = data.session_token;
-      if (document.getElementById('toggle-remember').checked) saveCreds(uid, pw);
-      document.getElementById('home-userid-display').textContent = uid;
-
-      // Auto-add admin as first member if not already in list
-      var exists = state.members.some(function(m) { return m.uid === uid; });
-      if (!exists) {
-        state.members.push({ id: Date.now().toString(), name: 'Me (' + uid + ')', uid: uid, pw: pw });
-        saveMembers();
+      if (document.getElementById('toggle-remember').checked) {
+        localStorage.setItem('eq_uid', uid);
+        localStorage.setItem('eq_pw', pw);
       }
+      ensureAdminMember(uid, pw);
+      document.getElementById('home-userid-display').textContent = uid;
       updateMemberCount();
       goTo('home');
+      updateCalStatus();
+      setTimeout(function() { fetchAllBookings(false); }, 800);
       showToast('Logged in successfully');
     } else {
       err.textContent = data.error || 'Login failed. Check your credentials.';
@@ -161,9 +222,12 @@ async function doLogin() {
 }
 
 function doLogout() {
+  localStorage.removeItem('eq_uid');
+  localStorage.removeItem('eq_pw');
   state.adminId    = '';
   state.adminToken = null;
-  goTo('login');
+  showScreen('login');
+  showToast('Logged out');
 }
 
 function updateCalStatus() {
@@ -183,30 +247,198 @@ function updateMemberCount() {
   if (el2) el2.textContent = count + ' member' + (count === 1 ? '' : 's');
 }
 
+// -- BOOKINGS --
+async function fetchAllBookings(showProgress) {
+  if (showProgress) {
+    document.getElementById('bookings-loader').style.display = 'block';
+    showToast('Fetching bookings...');
+  }
+  var allBookings = [];
+  for (var i = 0; i < state.members.length; i++) {
+    var m = state.members[i];
+    try {
+      var loginRes  = await fetch(API_BASE + '/api/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: m.uid, password: m.pw })
+      });
+      var loginData = await loginRes.json();
+      if (!loginData.success) continue;
+      var res  = await fetch(API_BASE + '/api/bookings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_token: loginData.session_token })
+      });
+      var data = await res.json();
+      var bookings = data.bookings || [];
+      bookings.forEach(function(b) {
+        b.memberName = m.name;
+        b.memberId   = m.id;
+        allBookings.push(b);
+      });
+    } catch(e) {
+      // Skip failed members silently
+    }
+  }
+
+  // If no real data, add mock for testing
+  if (!allBookings.length) {
+    allBookings = makeMockBookings();
+  }
+
+  state.bookings = allBookings;
+  saveBookings();
+
+  // Update tile count
+  var upcoming = allBookings.filter(function(b) { return !isPastBooking(b); });
+  var el = document.getElementById('tile-bookings-count');
+  if (el) el.textContent = upcoming.length;
+
+  if (showProgress) {
+    document.getElementById('bookings-loader').style.display = 'none';
+    renderBookings();
+    showToast('Bookings refreshed');
+  }
+}
+
+function makeMockBookings() {
+  var today = new Date();
+  var facilities = ['Ichinoe Community Hall', 'Community Plaza Koto', 'Matsue Kumin Plaza'];
+  var bookings = [];
+  // 2 upcoming
+  for (var i = 0; i < 2; i++) {
+    var d = new Date(today);
+    d.setDate(today.getDate() + (i + 1) * 7);
+    var key = d.toISOString().slice(0, 10);
+    bookings.push({
+      id: 'mock-' + i,
+      facility: facilities[i],
+      date: key,
+      time: '09:00 - 11:00',
+      purpose: 'Badminton',
+      memberName: state.members.length ? state.members[0].name : 'Me',
+      memberId: state.members.length ? state.members[0].id : 'admin',
+      status: 'confirmed',
+    });
+  }
+  // 1 past
+  var dp = new Date(today);
+  dp.setDate(today.getDate() - 7);
+  bookings.push({
+    id: 'mock-past',
+    facility: facilities[2],
+    date: dp.toISOString().slice(0, 10),
+    time: '13:00 - 15:00',
+    purpose: 'Badminton',
+    memberName: state.members.length ? state.members[0].name : 'Me',
+    memberId: state.members.length ? state.members[0].id : 'admin',
+    status: 'confirmed',
+  });
+  return bookings;
+}
+
+function isPastBooking(b) {
+  var p = b.date.split('-');
+  var d = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+  d.setHours(23, 59, 59);
+  return d < new Date();
+}
+
+function selectBookingFilter(chip) {
+  document.querySelectorAll('[data-bfilter]').forEach(function(c) { c.classList.remove('chip-selected'); });
+  chip.classList.add('chip-selected');
+  state.bookingFilter = chip.dataset.bfilter;
+  renderBookings();
+}
+
+function renderBookings() {
+  var list  = document.getElementById('bookings-list');
+  var empty = document.getElementById('bookings-empty');
+  var filter = state.bookingFilter;
+
+  var filtered = state.bookings.filter(function(b) {
+    if (filter === 'upcoming') return !isPastBooking(b);
+    if (filter === 'past')     return isPastBooking(b);
+    return true;
+  });
+
+  // Sort - upcoming first
+  filtered.sort(function(a, b) {
+    return a.date > b.date ? 1 : -1;
+  });
+
+  // Upcoming count strip
+  var upcomingCount = state.bookings.filter(function(b) { return !isPastBooking(b); }).length;
+  var el = document.getElementById('tile-bookings-count');
+  if (el) el.textContent = upcomingCount;
+
+  if (!filtered.length) {
+    list.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  var stripHtml = '';
+  if (filter === 'upcoming' || filter === 'all') {
+    stripHtml = '<div class="upcoming-strip">' +
+      '<div class="upcoming-strip-icon">&#128197;</div>' +
+      '<div class="upcoming-strip-info">' +
+        '<div class="upcoming-strip-num">' + upcomingCount + ' upcoming</div>' +
+        '<div class="upcoming-strip-sub">confirmed reservations</div>' +
+      '</div></div>';
+  }
+
+  var monN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var dayN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  list.innerHTML = stripHtml + filtered.map(function(b) {
+    var p = b.date.split('-');
+    var d = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+    var dateLabel = dayN[d.getDay()] + ', ' + monN[d.getMonth()] + ' ' + d.getDate() + ' ' + p[0];
+    var isPast  = isPastBooking(b);
+    var dotCls  = isPast ? 'dot-past' : 'dot-upcoming';
+    var tagCls  = isPast ? 'tag-past'  : 'tag-upcoming';
+    var tagLbl  = isPast ? 'Past' : 'Upcoming';
+    var initial = b.memberName ? b.memberName[0].toUpperCase() : '?';
+    return '<div class="booking-card">' +
+      '<div class="booking-card-top">' +
+        '<div class="booking-card-dot ' + dotCls + '"></div>' +
+        '<div class="booking-card-info">' +
+          '<div class="booking-facility">' + b.facility + '</div>' +
+          '<div class="booking-datetime">' + dateLabel + ' - ' + b.time + '</div>' +
+        '</div>' +
+        '<div class="booking-card-tag ' + tagCls + '">' + tagLbl + '</div>' +
+      '</div>' +
+      '<div class="booking-card-bottom">' +
+        '<div class="booking-member-tag">' +
+          '<div class="booking-member-avatar">' + initial + '</div>' +
+          b.memberName +
+        '</div>' +
+        (!isPast ? '<button class="booking-cancel-btn" onclick="cancelBooking(\'' + b.id + '\')">Cancel</button>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function cancelBooking(id) {
+  showToast('Cancel functionality coming soon');
+}
+
 // -- MEMBERS --
 function renderMembers() {
   var list  = document.getElementById('member-list');
   var empty = document.getElementById('member-empty');
   updateMemberCount();
-  if (!state.members.length) {
-    list.innerHTML  = '';
-    empty.style.display = 'block';
-    return;
-  }
+  if (!state.members.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
   list.innerHTML = state.members.map(function(m) {
     var initial = m.name ? m.name[0].toUpperCase() : '?';
     return '<div class="member-card">' +
       '<div class="member-avatar">' + initial + '</div>' +
-      '<div class="member-info">' +
-        '<div class="member-name">' + m.name + '</div>' +
-        '<div class="member-uid">ID: ' + m.uid + '</div>' +
-      '</div>' +
+      '<div class="member-info"><div class="member-name">' + m.name + '</div><div class="member-uid">ID: ' + m.uid + '</div></div>' +
       '<div class="member-actions">' +
         '<button class="btn-member-edit" data-id="' + m.id + '">Edit</button>' +
         '<button class="btn-member-del"  data-id="' + m.id + '">Del</button>' +
-      '</div>' +
-    '</div>';
+      '</div></div>';
   }).join('');
 }
 
@@ -218,7 +450,7 @@ function openAddMember() {
   document.getElementById('edit-member-id').value    = '';
   document.getElementById('verify-status').textContent = '';
   document.getElementById('verify-status').className = 'verify-status';
-  goTo('add-member');
+  showScreen('add-member');
 }
 
 function editMember(id) {
@@ -231,7 +463,7 @@ function editMember(id) {
   document.getElementById('edit-member-id').value    = id;
   document.getElementById('verify-status').textContent = '';
   document.getElementById('verify-status').className = 'verify-status';
-  goTo('add-member');
+  showScreen('add-member');
 }
 
 function deleteMember(id) {
@@ -247,8 +479,7 @@ async function verifyMember() {
   var statusEl = document.getElementById('verify-status');
   if (!uid || !pw) { statusEl.textContent = 'Enter User ID and password first'; statusEl.className = 'verify-status verify-err'; return; }
   setBtnLoading('btn-verify-member', 'verify-label', 'verify-spinner', true);
-  statusEl.textContent = 'Verifying...';
-  statusEl.className   = 'verify-status';
+  statusEl.textContent = 'Verifying...'; statusEl.className = 'verify-status';
   try {
     var res  = await fetch(API_BASE + '/api/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -271,24 +502,20 @@ async function verifyMember() {
 }
 
 function saveMember() {
-  var name = document.getElementById('member-name-input').value.trim();
-  var uid  = document.getElementById('member-uid-input').value.trim();
-  var pw   = document.getElementById('member-pw-input').value.trim();
+  var name   = document.getElementById('member-name-input').value.trim();
+  var uid    = document.getElementById('member-uid-input').value.trim();
+  var pw     = document.getElementById('member-pw-input').value.trim();
   var editId = document.getElementById('edit-member-id').value;
   if (!name || !uid || !pw) { showToast('Fill in all fields'); return; }
   if (editId) {
     for (var i = 0; i < state.members.length; i++) {
       if (state.members[i].id === editId) {
-        state.members[i].name = name;
-        state.members[i].uid  = uid;
-        state.members[i].pw   = pw;
-        break;
+        state.members[i].name = name; state.members[i].uid = uid; state.members[i].pw = pw; break;
       }
     }
     showToast('Member updated');
   } else {
-    var dup = state.members.some(function(m) { return m.uid === uid; });
-    if (dup) { showToast('Member with this ID already exists'); return; }
+    if (state.members.some(function(m) { return m.uid === uid; })) { showToast('Member already exists'); return; }
     state.members.push({ id: Date.now().toString(), name: name, uid: uid, pw: pw });
     showToast('Member added');
   }
@@ -299,12 +526,9 @@ function saveMember() {
 
 // -- SCAN --
 function renderScanMemberChips() {
-  var wrap = document.getElementById('scan-members-wrap');
+  var wrap  = document.getElementById('scan-members-wrap');
   var chips = document.getElementById('scan-members-chips');
-  if (!state.members.length) {
-    wrap.style.display = 'none';
-    return;
-  }
+  if (!state.members.length) { wrap.style.display = 'none'; return; }
   wrap.style.display = 'block';
   chips.innerHTML = state.members.map(function(m) {
     return '<div class="member-chip"><div class="member-chip-dot"></div>' + m.name + '</div>';
@@ -317,90 +541,68 @@ function selectRangeChip(chip) {
 }
 
 async function doScan() {
-  if (!state.members.length) {
-    showToast('Add members first');
-    goTo('members');
-    return;
-  }
+  if (!state.members.length) { showToast('Add members first'); goTo('members'); return; }
   var rangeChip = document.querySelector('[data-range].chip-selected');
   var days = rangeChip ? parseInt(rangeChip.dataset.range) : 14;
-
   setBtnLoading('btn-scan', 'scan-label', 'scan-spinner', true);
   document.getElementById('scan-loader').style.display  = 'block';
   document.getElementById('scan-empty').style.display   = 'none';
   document.getElementById('cal-wrap').style.display     = 'none';
   document.getElementById('member-breakdown').style.display = 'none';
 
-  // Show progress panel
   var progressWrap = document.getElementById('scan-progress');
   progressWrap.style.display = 'block';
   progressWrap.innerHTML = '<div class="scan-progress-title">Scanning members...</div>' +
     state.members.map(function(m) {
-      return '<div class="scan-progress-item" id="prog-' + m.id + '">' +
-        '<div class="progress-spinner"></div>' +
-        '<span>' + m.name + '</span></div>';
+      return '<div class="scan-progress-item" id="prog-' + m.id + '"><div class="progress-spinner"></div><span>' + m.name + '</span></div>';
     }).join('');
 
-  // Combined scan data: date -> [ { facility, status, slots, memberName, memberId } ]
   var combined = {};
-
   for (var i = 0; i < state.members.length; i++) {
     var m = state.members[i];
     var progEl = document.getElementById('prog-' + m.id);
     try {
-      // Login as this member
       var loginRes  = await fetch(API_BASE + '/api/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: m.uid, password: m.pw })
       });
       var loginData = await loginRes.json();
-
       if (!loginData.success) throw new Error('Login failed');
-
-      // Scan
       var scanRes  = await fetch(API_BASE + '/api/scan', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_token: loginData.session_token, days: days })
       });
       var scanData = await scanRes.json();
-      var avail    = scanData.availability || makeMockData(days, m.name);
-
-      // Merge into combined
+      var avail = scanData.availability || makeMockScanData(days, m.name);
       Object.keys(avail).forEach(function(date) {
         if (!combined[date]) combined[date] = [];
         avail[date].forEach(function(slot) {
-          combined[date].push({
-            facility:   slot.name || slot.facility,
-            status:     slot.status,
-            slots:      slot.slots || [],
-            memberName: m.name,
-            memberId:   m.id,
-          });
+          combined[date].push({ facility: slot.name || slot.facility, status: slot.status, slots: slot.slots || [], memberName: m.name, memberId: m.id });
         });
       });
-
-      if (progEl) { progEl.innerHTML = '<div class="progress-check">OK</div><span>' + m.name + '</span>'; }
+      if (progEl) progEl.innerHTML = '<div class="progress-check">OK</div><span>' + m.name + '</span>';
     } catch(e) {
-      if (progEl) { progEl.innerHTML = '<div class="progress-error">X</div><span>' + m.name + ' - failed</span>'; }
+      if (progEl) progEl.innerHTML = '<div class="progress-error">X</div><span>' + m.name + ' - failed</span>';
     }
   }
 
   state.scanData = combined;
   state.calYear  = new Date().getFullYear();
   state.calMonth = new Date().getMonth();
-
   document.getElementById('scan-loader').style.display = 'none';
   setBtnLoading('btn-scan', 'scan-label', 'scan-spinner', false);
-
   renderCalendar();
   renderMemberBreakdown();
-  document.getElementById('cal-wrap').style.display           = 'block';
-  document.getElementById('member-breakdown').style.display   = 'block';
+  document.getElementById('cal-wrap').style.display         = 'block';
+  document.getElementById('member-breakdown').style.display = 'block';
   progressWrap.style.display = 'none';
-  showToast('Scan complete');
+
+  var totalDays = Object.keys(combined).filter(function(k) { return combined[k].length > 0; }).length;
+  document.getElementById('tile-scan-count').textContent = totalDays;
+  showToast('Scan complete - ' + totalDays + ' days available');
 }
 
-function makeMockData(days, memberName) {
+function makeMockScanData(days, memberName) {
   var data = {};
   var today = new Date();
   var facilities = ['Ichinoe Community Hall','Community Plaza Koto','Matsue Kumin Plaza','Bunka Sports Plaza','Hirai Community Hall'];
@@ -443,9 +645,9 @@ function renderCalendar() {
     html += '<div class="cal-day empty"><div class="cal-day-num"></div></div>';
   }
   for (var d = 1; d <= daysInMonth; d++) {
-    var p = [year, month + 1, d];
-    var dateObj = new Date(p[0], p[1]-1, p[2]); dateObj.setHours(0,0,0,0);
-    var key     = p[0] + '-' + (p[1] < 10 ? '0'+p[1] : p[1]) + '-' + (p[2] < 10 ? '0'+p[2] : p[2]);
+    var mo  = month + 1;
+    var key = year + '-' + (mo < 10 ? '0'+mo : mo) + '-' + (d < 10 ? '0'+d : d);
+    var dateObj = new Date(year, month, d); dateObj.setHours(0,0,0,0);
     var isToday = dateObj.getTime() === today.getTime();
     var isPast  = dateObj.getTime() < today.getTime();
     var slots   = state.scanData[key] || [];
@@ -455,17 +657,23 @@ function renderCalendar() {
     var dotColor = ''; var countText = ''; var clickable = false;
     if (total > 0 && !isPast) {
       clickable = true;
-      if (avail > 0)        { dotColor = 'dot-green';  countText = avail + (avail===1?' fac':' fac'); }
-      else if (partial > 0) { dotColor = 'dot-yellow'; countText = partial + ' part'; }
-    } else if (Object.keys(state.scanData).indexOf(key) >= 0 && total === 0 && !isPast) {
+      if (avail > 0)        { dotColor = 'dot-green';  countText = avail + ' fac'; }
+      else if (partial > 0) { dotColor = 'dot-yellow'; countText = partial + ' pt'; }
+    } else if (state.scanData[key] !== undefined && total === 0 && !isPast) {
       dotColor = 'dot-grey';
     }
     var classes  = 'cal-day' + (isToday?' today':'') + (isPast?' past':'') + (clickable?' has-slots':'');
     var dataAttr = clickable ? ' data-date="' + key + '"' : '';
+    // Check if any member has a booking on this date
+    var hasBooking = state.bookings.some(function(b) { return b.date === key && !isPastBooking(b); });
+
     html += '<div class="' + classes + '"' + dataAttr + '>' +
       '<div class="cal-day-num">' + d + '</div>' +
       (countText ? '<div class="cal-day-count">' + countText + '</div>' : '') +
-      (dotColor  ? '<div class="cal-dot ' + dotColor + '"></div>' : '') +
+      '<div class="cal-day-dots">' +
+        (dotColor ? '<div class="cal-dot ' + dotColor + '"></div>' : '') +
+        (hasBooking ? '<div class="cal-dot dot-blue"></div>' : '') +
+      '</div>' +
     '</div>';
   }
   grid.innerHTML = html;
@@ -474,7 +682,6 @@ function renderCalendar() {
 // -- MEMBER BREAKDOWN --
 function renderMemberBreakdown() {
   var list = document.getElementById('breakdown-list');
-  // Group by member
   var memberDates = {};
   Object.keys(state.scanData).forEach(function(date) {
     state.scanData[date].forEach(function(slot) {
@@ -483,30 +690,20 @@ function renderMemberBreakdown() {
       if (memberDates[id].dates.indexOf(date) < 0) memberDates[id].dates.push(date);
     });
   });
-
-  if (!Object.keys(memberDates).length) {
-    list.innerHTML = '<div class="empty-text" style="padding:16px;text-align:center;">No availability found</div>';
-    return;
-  }
-
+  if (!Object.keys(memberDates).length) { list.innerHTML = '<div style="padding:16px;text-align:center;color:#9CA3AF;">No availability found</div>'; return; }
+  var monN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var dayN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   list.innerHTML = Object.keys(memberDates).map(function(id) {
-    var m     = memberDates[id];
-    var dates = m.dates.sort();
+    var m = memberDates[id];
     var initial = m.name ? m.name[0].toUpperCase() : '?';
-    var datesHtml = dates.slice(0, 10).map(function(date) {
+    var datesHtml = m.dates.sort().slice(0, 10).map(function(date) {
       var p = date.split('-');
-      var d2 = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
-      var dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-      var monNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      var label = dayNames[d2.getDay()] + ' ' + monNames[d2.getMonth()] + ' ' + d2.getDate();
+      var d = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+      var label = dayN[d.getDay()] + ' ' + monN[d.getMonth()] + ' ' + d.getDate();
       return '<div class="breakdown-date-chip" data-date="' + date + '" data-member="' + id + '">' + label + '</div>';
     }).join('');
     return '<div class="breakdown-card">' +
-      '<div class="breakdown-member-row">' +
-        '<div class="breakdown-avatar">' + initial + '</div>' +
-        '<div class="breakdown-name">' + m.name + '</div>' +
-        '<div class="breakdown-avail-count">' + dates.length + ' days</div>' +
-      '</div>' +
+      '<div class="breakdown-member-row"><div class="breakdown-avatar">' + initial + '</div><div class="breakdown-name">' + m.name + '</div><div class="breakdown-avail-count">' + m.dates.length + ' days</div></div>' +
       '<div class="breakdown-dates">' + datesHtml + '</div>' +
     '</div>';
   }).join('');
@@ -515,13 +712,12 @@ function renderMemberBreakdown() {
 // -- SHEET --
 function openSheet(dateStr) {
   state.selectedDate = dateStr;
-  var slots  = state.scanData[dateStr] || [];
-  var p      = dateStr.split('-');
-  var d      = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
-  var dayN   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  var monN   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var label  = dayN[d.getDay()] + ', ' + monN[d.getMonth()] + ' ' + d.getDate();
-  document.getElementById('sheet-date').textContent  = label;
+  var slots = state.scanData[dateStr] || [];
+  var p = dateStr.split('-');
+  var d = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+  var dayN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var monN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('sheet-date').textContent  = dayN[d.getDay()] + ', ' + monN[d.getMonth()] + ' ' + d.getDate();
   var avail = slots.filter(function(s) { return s.status !== 'none'; });
   document.getElementById('sheet-count').textContent = avail.length + ' slot' + (avail.length===1?'':'s') + ' available';
   var list = document.getElementById('sheet-list');
@@ -530,13 +726,9 @@ function openSheet(dateStr) {
   } else {
     list.innerHTML = avail.map(function(s) {
       var dotClass = s.status === 'available' ? 'dot-green' : 'dot-yellow';
-      var detail   = s.status === 'available' ? 'Available' : 'Partial';
       return '<div class="sheet-item" data-facility="' + s.facility + '">' +
         '<div class="sheet-item-dot ' + dotClass + '"></div>' +
-        '<div class="sheet-item-info">' +
-          '<div class="sheet-item-name">' + s.facility + '</div>' +
-          '<div class="sheet-item-detail">' + detail + ' - ' + s.memberName + '</div>' +
-        '</div>' +
+        '<div class="sheet-item-info"><div class="sheet-item-name">' + s.facility + '</div><div class="sheet-item-detail">' + (s.status === 'available' ? 'Available' : 'Partial') + ' - Badminton</div></div>' +
         '<div class="sheet-member-tag">' + s.memberName + '</div>' +
         '<div class="sheet-item-arrow">></div>' +
       '</div>';
@@ -544,10 +736,6 @@ function openSheet(dateStr) {
   }
   document.getElementById('sheet-overlay').classList.add('show');
   document.getElementById('bottom-sheet').classList.add('show');
-}
-
-function openSheetForMember(date, memberId) {
-  openSheet(date);
 }
 
 function closeSheet() {
@@ -559,66 +747,61 @@ function closeSheet() {
 function openFacility(facilityName) {
   state.selectedFacility = facilityName;
   closeSheet();
-  var dateStr  = state.selectedDate;
-  var allSlots = state.scanData[dateStr] || [];
+  var allSlots = state.scanData[state.selectedDate] || [];
   var facility = null;
   for (var i = 0; i < allSlots.length; i++) {
     if (allSlots[i].facility === facilityName) { facility = allSlots[i]; break; }
   }
-  var p     = dateStr.split('-');
-  var d     = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
-  var monN  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var dayN  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  var dateLabel = dayN[d.getDay()] + ' ' + monN[d.getMonth()] + ' ' + d.getDate();
+  var p = state.selectedDate.split('-');
+  var d = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+  var monN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var dayN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   document.getElementById('facility-title').textContent    = facilityName;
-  document.getElementById('facility-date-sub').textContent = dateLabel + ' - Badminton';
+  document.getElementById('facility-date-sub').textContent = dayN[d.getDay()] + ' ' + monN[d.getMonth()] + ' ' + d.getDate() + ' - Badminton';
   document.getElementById('facility-info-name').textContent = facilityName;
   var badge = document.getElementById('facility-status-badge');
   if (facility && facility.status === 'available') {
     badge.textContent = 'Available'; badge.style.background = '#D1FAE5'; badge.style.color = '#10B981';
   } else {
-    badge.textContent = 'Partial';   badge.style.background = '#FEF3C7'; badge.style.color = '#F59E0B';
+    badge.textContent = 'Partial'; badge.style.background = '#FEF3C7'; badge.style.color = '#F59E0B';
   }
-  var timeSlots = facility && facility.slots ? facility.slots : [];
-  var memberName = facility ? facility.memberName : '';
-  var memberId   = facility ? facility.memberId   : '';
+  var timeSlots  = facility && facility.slots   ? facility.slots   : [];
+  var memberName = facility && facility.memberName ? facility.memberName : '';
+  var memberId   = facility && facility.memberId   ? facility.memberId   : '';
   var list = document.getElementById('slots-list');
   if (!timeSlots.length) {
-    list.innerHTML = '<div class="empty-state"><div class="empty-icon">No slots</div><div class="empty-text">No detailed slot data yet.</div></div>';
+    list.innerHTML = '<div class="empty-state"><div class="empty-text">No detailed slot data yet.</div></div>';
   } else {
     list.innerHTML = timeSlots.map(function(s) {
       var cls     = s.status === 'available' ? 'slot-available' : 'slot-partial';
       var pillCls = s.status === 'available' ? 'pill-available' : 'pill-partial';
       var pillLbl = s.status === 'available' ? 'Available' : 'Partial';
-      var slotObj = { time: s.time, key: s.key, facility: facilityName, date: dateStr, memberName: memberName, memberId: memberId };
-      var slotData = JSON.stringify(slotObj).replace(/'/g, '&apos;');
-      return '<div class="slot-card ' + cls + '" data-slot=\'' + slotData + '\'>' +
-        '<div class="slot-time-wrap">' +
-          '<div class="slot-time">' + s.time + '</div>' +
-          '<div class="slot-duration">' + s.duration + ' - ' + memberName + '</div>' +
-        '</div>' +
+      var slotObj = { time: s.time, key: s.key, facility: facilityName, date: state.selectedDate, memberName: memberName, memberId: memberId };
+      var slotStr = JSON.stringify(slotObj).replace(/'/g, '&#39;');
+      return '<div class="slot-card ' + cls + '" data-slot=\'' + slotStr + '\'>' +
+        '<div class="slot-time-wrap"><div class="slot-time">' + s.time + '</div><div class="slot-duration">' + s.duration + ' - ' + memberName + '</div></div>' +
         '<div class="slot-status-pill ' + pillCls + '">' + pillLbl + '</div>' +
         '<div class="slot-arrow">></div>' +
       '</div>';
     }).join('');
   }
-  goTo('facility');
+  showScreen('facility');
 }
 
 // -- CONFIRM --
 function openConfirm(slotDataStr) {
   var slot = JSON.parse(slotDataStr);
   state.selectedSlot = slot;
-  var p     = slot.date.split('-');
-  var d     = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
-  var monN  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  var dayN  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  var dateLabel = dayN[d.getDay()] + ', ' + monN[d.getMonth()] + ' ' + d.getDate();
+  var p = slot.date.split('-');
+  var d = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+  var monN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var dayN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   document.getElementById('confirm-facility').textContent = slot.facility;
-  document.getElementById('confirm-date').textContent     = dateLabel;
+  document.getElementById('confirm-date').textContent     = dayN[d.getDay()] + ', ' + monN[d.getMonth()] + ' ' + d.getDate();
   document.getElementById('confirm-time').textContent     = slot.time;
-  document.getElementById('confirm-member').textContent   = slot.memberName + ' (ID: ' + (getMemberById(slot.memberId) ? getMemberById(slot.memberId).uid : '') + ')';
-  goTo('confirm');
+  var m = getMemberById(slot.memberId);
+  document.getElementById('confirm-member').textContent   = slot.memberName + (m ? ' (ID: ' + m.uid + ')' : '');
+  showScreen('confirm');
 }
 
 async function doBook() {
@@ -632,7 +815,7 @@ async function doBook() {
       body: JSON.stringify({ user_id: member ? member.uid : '', password: member ? member.pw : '' })
     });
     var loginData = await loginRes.json();
-    if (!loginData.success) throw new Error('Login failed for member');
+    if (!loginData.success) throw new Error('Login failed');
     var res  = await fetch(API_BASE + '/api/book', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_token: loginData.session_token, facility: slot.facility, date: slot.date, time_slot: slot.time, purpose: 'Badminton' })
@@ -648,18 +831,27 @@ async function doBook() {
 }
 
 function showSuccess(slot) {
-  var p     = slot.date.split('-');
-  var d     = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
-  var monN  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var dayN  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var p = slot.date.split('-');
+  var d = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+  var monN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var dayN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var dateLabel = dayN[d.getDay()] + ' ' + monN[d.getMonth()] + ' ' + d.getDate();
+
+  // Save to local bookings
+  var newBooking = { id: Date.now().toString(), facility: slot.facility, date: slot.date, time: slot.time, purpose: 'Badminton', memberName: slot.memberName, memberId: slot.memberId, status: 'confirmed' };
+  state.bookings.unshift(newBooking);
+  saveBookings();
+  var upCount = state.bookings.filter(function(b) { return !isPastBooking(b); }).length;
+  var el = document.getElementById('tile-bookings-count');
+  if (el) el.textContent = upCount;
+
   document.getElementById('success-detail').textContent = 'Booking submitted for ' + dateLabel;
   document.getElementById('success-summary').innerHTML =
     '<div class="success-row"><span class="success-key">Facility</span><span class="success-val">' + slot.facility + '</span></div>' +
     '<div class="success-row"><span class="success-key">Date</span><span class="success-val">' + dateLabel + '</span></div>' +
     '<div class="success-row"><span class="success-key">Time</span><span class="success-val">' + slot.time + '</span></div>' +
     '<div class="success-row"><span class="success-key">Member</span><span class="success-val">' + slot.memberName + '</span></div>';
-  goTo('success');
+  showScreen('success');
 }
 
 // -- RESULTS --
@@ -667,10 +859,7 @@ async function loadResults() {
   var loader = document.getElementById('results-loader');
   loader.style.display = 'block';
   try {
-    var res  = await fetch(API_BASE + '/api/results', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_token: state.adminToken })
-    });
+    var res  = await fetch(API_BASE + '/api/results', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_token: state.adminToken }) });
     var data = await res.json();
     state.results = data.results || [];
   } catch(e) { state.results = []; }
@@ -690,11 +879,7 @@ function renderResults() {
   if (!filtered.length) { list.innerHTML = '<div class="empty-state"><div class="empty-text">No results yet</div></div>'; return; }
   var labels = { won:'Won', lost:'Not Won', pending:'Pending' };
   list.innerHTML = filtered.map(function(r) {
-    return '<div class="result-card">' +
-      '<div class="result-dot dot-' + r.status + '"></div>' +
-      '<div class="result-body"><div class="result-facility">' + r.facility + '</div><div class="result-meta">' + r.purpose + ' - ' + r.date + '</div></div>' +
-      '<div class="result-tag tag-' + r.status + '">' + labels[r.status] + '</div>' +
-    '</div>';
+    return '<div class="result-card"><div class="result-dot dot-' + r.status + '"></div><div class="result-body"><div class="result-facility">' + r.facility + '</div><div class="result-meta">' + r.purpose + ' - ' + r.date + '</div></div><div class="result-tag tag-' + r.status + '">' + labels[r.status] + '</div></div>';
   }).join('');
 }
 
@@ -715,17 +900,4 @@ function showToast(msg) {
   t.classList.add('show');
   clearTimeout(t._timer);
   t._timer = setTimeout(function() { t.classList.remove('show'); }, 3000);
-}
-
-function saveCreds(uid, pw) {
-  try { localStorage.setItem('eq_uid', uid); localStorage.setItem('eq_pw', pw); } catch(e) {}
-}
-
-function restoreCreds() {
-  try {
-    var uid = localStorage.getItem('eq_uid');
-    var pw  = localStorage.getItem('eq_pw');
-    if (uid) document.getElementById('input-userid').value  = uid;
-    if (pw)  document.getElementById('input-password').value = pw;
-  } catch(e) {}
 }

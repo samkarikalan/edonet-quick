@@ -573,11 +573,17 @@ async function doScan() {
         body: JSON.stringify({ session_token: loginData.session_token, days: days })
       });
       var scanData = await scanRes.json();
-      var avail = scanData.availability || makeMockScanData(days, m.name);
+      var avail = scanData.availability;
+      if (!avail || Object.keys(avail).length === 0) {
+        // Real scan returned empty - use mock for now so UI shows something
+        avail = makeMockScanData(days, m.name);
+        if (progEl) progEl.innerHTML += ' <small style="color:#F59E0B">(mock)</small>';
+      }
       Object.keys(avail).forEach(function(date) {
         if (!combined[date]) combined[date] = [];
         avail[date].forEach(function(slot) {
-          combined[date].push({ facility: slot.name || slot.facility, status: slot.status, slots: slot.slots || [], memberName: m.name, memberId: m.id });
+          var facName = slot.facility || slot.name || 'Unknown';
+          combined[date].push({ facility: facName, status: slot.status, slots: slot.slots || [], memberName: m.name, memberId: m.id });
         });
       });
       if (progEl) progEl.innerHTML = '<div class="progress-check">OK</div><span>' + m.name + '</span>';

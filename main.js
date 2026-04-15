@@ -279,10 +279,7 @@ async function fetchAllBookings(showProgress) {
     }
   }
 
-  // If no real data, add mock for testing
-  if (!allBookings.length) {
-    allBookings = makeMockBookings();
-  }
+  // No mock - show real data only
 
   state.bookings = allBookings;
   saveBookings();
@@ -299,41 +296,6 @@ async function fetchAllBookings(showProgress) {
   }
 }
 
-function makeMockBookings() {
-  var today = new Date();
-  var facilities = ['Ichinoe Community Hall', 'Community Plaza Koto', 'Matsue Kumin Plaza'];
-  var bookings = [];
-  // 2 upcoming
-  for (var i = 0; i < 2; i++) {
-    var d = new Date(today);
-    d.setDate(today.getDate() + (i + 1) * 7);
-    var key = d.toISOString().slice(0, 10);
-    bookings.push({
-      id: 'mock-' + i,
-      facility: facilities[i],
-      date: key,
-      time: '09:00 - 11:00',
-      purpose: 'Badminton',
-      memberName: state.members.length ? state.members[0].name : 'Me',
-      memberId: state.members.length ? state.members[0].id : 'admin',
-      status: 'confirmed',
-    });
-  }
-  // 1 past
-  var dp = new Date(today);
-  dp.setDate(today.getDate() - 7);
-  bookings.push({
-    id: 'mock-past',
-    facility: facilities[2],
-    date: dp.toISOString().slice(0, 10),
-    time: '13:00 - 15:00',
-    purpose: 'Badminton',
-    memberName: state.members.length ? state.members[0].name : 'Me',
-    memberId: state.members.length ? state.members[0].id : 'admin',
-    status: 'confirmed',
-  });
-  return bookings;
-}
 
 function isPastBooking(b) {
   var p = b.date.split('-');
@@ -573,14 +535,12 @@ async function doScan() {
         body: JSON.stringify({ session_token: loginData.session_token, days: days })
       });
       var scanData = await scanRes.json();
-      var avail = scanData.availability;
-      var isReal = scanData.real_data;
+      var avail = scanData.availability || {};
       var scanErr = scanData.error;
-      if (!avail || Object.keys(avail).length === 0) {
-        avail = makeMockScanData(days, m.name);
-        if (progEl) progEl.innerHTML += ' <small style="color:#F59E0B">(mock' + (scanErr ? ': ' + scanErr.substring(0,40) : '') + ')</small>';
+      if (Object.keys(avail).length === 0) {
+        if (progEl) progEl.innerHTML = '<div class="progress-error">X</div><span>' + m.name + ' - ' + (scanErr ? scanErr.substring(0, 60) : 'No data') + '</span>';
       } else {
-        if (progEl) progEl.innerHTML += ' <small style="color:#10B981">(real data)</small>';
+        if (progEl) progEl.innerHTML = '<div class="progress-check">OK</div><span>' + m.name + ' - ' + Object.keys(avail).length + ' days found</span>';
       }
       Object.keys(avail).forEach(function(date) {
         if (!combined[date]) combined[date] = [];
@@ -608,29 +568,17 @@ async function doScan() {
 
   var totalDays = Object.keys(combined).filter(function(k) { return combined[k].length > 0; }).length;
   document.getElementById('tile-scan-count').textContent = totalDays;
-  showToast('Scan complete - ' + totalDays + ' days available');
+  if (totalDays === 0) {
+    document.getElementById('scan-empty').style.display = 'block';
+    document.getElementById('scan-empty').innerHTML = '<div class="empty-icon">&#128683;</div><div class="empty-text">No availability data returned.<br>The scan server may be blocked.<br>Check Render logs for details.</div>';
+    document.getElementById('cal-wrap').style.display = 'none';
+    document.getElementById('member-breakdown').style.display = 'none';
+    showToast('Scan failed - no data returned');
+  } else {
+    showToast('Scan complete - ' + totalDays + ' days found');
+  }
 }
 
-function makeMockScanData(days, memberName) {
-  var data = {};
-  var today = new Date();
-  var facilities = ['Ichinoe Community Hall','Community Plaza Koto','Matsue Kumin Plaza','Bunka Sports Plaza','Hirai Community Hall'];
-  for (var i = 0; i < days; i++) {
-    var d = new Date(today);
-    d.setDate(today.getDate() + i);
-    var key   = d.toISOString().slice(0, 10);
-    var count = Math.floor(Math.random() * 3) + 1;
-    data[key] = [];
-    for (var j = 0; j < count; j++) {
-      var status = Math.random() > 0.3 ? 'available' : 'partial';
-      var slots  = SLOT_TIMES.filter(function() { return Math.random() > 0.4; }).map(function(s) {
-        return { time: s.time, duration: s.duration, key: s.key, status: Math.random() > 0.3 ? 'available' : 'partial' };
-      });
-      data[key].push({ name: facilities[j % facilities.length], status: status, slots: slots });
-    }
-  }
-  return data;
-}
 
 // -- CALENDAR --
 function changeMonth(dir) {

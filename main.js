@@ -249,18 +249,25 @@ function attachEvents() {
 }
 
 function showScreen(name) {
+  var target = document.getElementById('screen-' + name);
+  if (!target) { console.error('No screen: ' + name); return; }
   document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
-  document.getElementById('screen-' + name).classList.add('active');
+  target.classList.add('active');
   window.scrollTo(0, 0);
 }
 
 function goTo(screen) {
+  // Bookmarklet setup screen doesn't need login
+  if (screen !== 'bookmarklet' && !state.adminToken) {
+    showToast('Please login first');
+    return;
+  }
   showScreen(screen);
   if (screen === 'members')     renderMembers();
   if (screen === 'bookmarklet') renderBookmarklet();
-  if (screen === 'scan')     renderScanMemberChips();
-  if (screen === 'bookings') renderBookings();
-  if (screen === 'results')  loadResults();
+  if (screen === 'scan')        renderScanMemberChips();
+  if (screen === 'bookings')    renderBookings();
+  if (screen === 'results')     loadResults();
 }
 
 // -- LOGIN --

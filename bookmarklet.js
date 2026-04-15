@@ -1,0 +1,88 @@
+(function() {
+  var FAC = {
+    '2':'Ichinoe Community Hall','3':'Community Plaza Ichinoe',
+    '4':'Matsue Kumin Plaza','5':'Matsushima Community Hall',
+    '63':'Bunka Sports Plaza','8':'Komatsugawa Sakura Hall',
+    '9':'Hirai Community Hall','10':'Nakahirai Community Hall',
+    '13':'Kitakasai Community Hall','14':'Ninoe Community Hall',
+    '18':'Rinkaichou Community Hall','19':'Higashikasai Community Hall',
+    '20':'Nagashima Kuwagawa Community Hall','24':'Nishikoiwa Community Hall',
+    '25':'Kitakoiwa Community Hall','26':'Minamikoiwa Community Hall',
+    '33':'Shinozaki Community Hall'
+  };
+  var STATUS = {
+    'vacant':'available','circle':'available','some':'partial',
+    'full':'full','time-over':'closed','lottery':'lottery','lot':'lottery'
+  };
+
+  // Check we are on the right page
+  if (typeof app === 'undefined' || !app.model) {
+    alert('Please navigate to the availability page first!');
+    return;
+  }
+
+  var avail = {};
+  var days = app.model.AvailabilityDays;
+
+  if (!days || (!days.AvailabilitySelectDays && !days.AvailabilitySelectDaysCalendar)) {
+    alert('No availability data found. Please search for a facility first.');
+    return;
+  }
+
+  // Parse AvailabilitySelectDays (table view)
+  var selectDays = days.AvailabilitySelectDays || [];
+  selectDays.forEach(function(facGroup) {
+    var facId   = String(facGroup.FacilityCode || '');
+    var facName = FAC[facId] || ('Facility ' + facId);
+    (facGroup.Rows || []).forEach(function(row) {
+      (row.Cells || []).forEach(function(cell) {
+        var status  = cell.Status || '';
+        var date    = (cell.UseDate || '').substring(0, 10);
+        var statusN = STATUS[status] || 'unknown';
+        if (date && (statusN === 'available' || statusN === 'partial' || statusN === 'lottery')) {
+          if (!avail[date]) avail[date] = [];
+          if (!avail[date].some(function(x) { return x.facility === facName; })) {
+            avail[date].push({ facility: facName, facility_id: facId, status: statusN, slots: [] });
+          }
+        }
+      });
+    });
+  });
+
+  // Also parse AvailabilitySelectDaysCalendar (calendar view)
+  var calDays = days.AvailabilitySelectDaysCalendar || [];
+  calDays.forEach(function(facGroup) {
+    var facId   = String(facGroup.FacilityCode || '');
+    var facName = FAC[facId] || ('Facility ' + facId);
+    (facGroup.Rows || []).forEach(function(row) {
+      (row.Months || []).forEach(function(month) {
+        (month.Weeks || []).forEach(function(week) {
+          ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].forEach(function(day) {
+            var cell = week[day];
+            if (!cell) return;
+            var status  = cell.Status || '';
+            var date    = (cell.UseDate || '').substring(0, 10);
+            var statusN = STATUS[status] || 'unknown';
+            if (date && (statusN === 'available' || statusN === 'partial' || statusN === 'lottery')) {
+              if (!avail[date]) avail[date] = [];
+              if (!avail[date].some(function(x) { return x.facility === facName; })) {
+                avail[date].push({ facility: facName, facility_id: facId, status: statusN, slots: [] });
+              }
+            }
+          });
+        });
+      });
+    });
+  });
+
+  var count = Object.keys(avail).length;
+  if (count === 0) {
+    alert('No available slots found in current view.');
+    return;
+  }
+
+  // Send to our app
+  var encoded = encodeURIComponent(JSON.stringify(avail));
+  var appUrl  = 'https://samkarikalan.github.io/edonet-quick/?scan=' + encoded;
+  window.location.href = appUrl;
+})();

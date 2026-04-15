@@ -1,3 +1,30 @@
+
+var BOOKMARKLET_URL = 'javascript:(function() { var FAC = { \'2\':\'Ichinoe Community Hall\',\'3\':\'Community Plaza Ichinoe\', \'4\':\'Matsue Kumin Plaza\',\'5\':\'Matsushima Community Hall\', \'63\':\'Bunka Sports Plaza\',\'8\':\'Komatsugawa Sakura Hall\', \'9\':\'Hirai Community Hall\',\'10\':\'Nakahirai Community Hall\', \'13\':\'Kitakasai Community Hall\',\'14\':\'Ninoe Community Hall\', \'18\':\'Rinkaichou Community Hall\',\'19\':\'Higashikasai Community Hall\', \'20\':\'Nagashima Kuwagawa Community Hall\',\'24\':\'Nishikoiwa Community Hall\', \'25\':\'Kitakoiwa Community Hall\',\'26\':\'Minamikoiwa Community Hall\', \'33\':\'Shinozaki Community Hall\' }; var STATUS = { \'vacant\':\'available\',\'circle\':\'available\',\'some\':\'partial\', \'full\':\'full\',\'time-over\':\'closed\',\'lottery\':\'lottery\',\'lot\':\'lottery\' }; if (typeof app === \'undefined\' || !app.model) { alert(\'Please navigate to the availability page first!\'); return; } var avail = {}; var days = app.model.AvailabilityDays; if (!days || (!days.AvailabilitySelectDays && !days.AvailabilitySelectDaysCalendar)) { alert(\'No availability data found. Please search for a facility first.\'); return; } var selectDays = days.AvailabilitySelectDays || []; selectDays.forEach(function(facGroup) { var facId = String(facGroup.FacilityCode || \'\'); var facName = FAC[facId] || (\'Facility \' + facId); (facGroup.Rows || []).forEach(function(row) { (row.Cells || []).forEach(function(cell) { var status = cell.Status || \'\'; var date = (cell.UseDate || \'\').substring(0, 10); var statusN = STATUS[status] || \'unknown\'; if (date && (statusN === \'available\' || statusN === \'partial\' || statusN === \'lottery\')) { if (!avail[date]) avail[date] = []; if (!avail[date].some(function(x) { return x.facility === facName; })) { avail[date].push({ facility: facName, facility_id: facId, status: statusN, slots: [] }); } } }); }); }); var calDays = days.AvailabilitySelectDaysCalendar || []; calDays.forEach(function(facGroup) { var facId = String(facGroup.FacilityCode || \'\'); var facName = FAC[facId] || (\'Facility \' + facId); (facGroup.Rows || []).forEach(function(row) { (row.Months || []).forEach(function(month) { (month.Weeks || []).forEach(function(week) { [\'Sunday\',\'Monday\',\'Tuesday\',\'Wednesday\',\'Thursday\',\'Friday\',\'Saturday\'].forEach(function(day) { var cell = week[day]; if (!cell) return; var status = cell.Status || \'\'; var date = (cell.UseDate || \'\').substring(0, 10); var statusN = STATUS[status] || \'unknown\'; if (date && (statusN === \'available\' || statusN === \'partial\' || statusN === \'lottery\')) { if (!avail[date]) avail[date] = []; if (!avail[date].some(function(x) { return x.facility === facName; })) { avail[date].push({ facility: facName, facility_id: facId, status: statusN, slots: [] }); } } }); }); }); }); }); var count = Object.keys(avail).length; if (count === 0) { alert(\'No available slots found in current view.\'); return; } var encoded = encodeURIComponent(JSON.stringify(avail)); var appUrl = \'https: window.location.href = appUrl; })();';
+
+function renderBookmarklet() {
+  var el = document.getElementById('bookmarklet-url');
+  if (el) el.textContent = BOOKMARKLET_URL.substring(0, 200) + '...';
+}
+
+function copyBookmarklet() {
+  navigator.clipboard.writeText(BOOKMARKLET_URL).then(function() {
+    var el = document.getElementById('copy-status');
+    if (el) { el.textContent = 'Copied! Now paste into a Safari bookmark URL.'; }
+    showToast('Bookmarklet copied!');
+  }).catch(function() {
+    // Fallback
+    var ta = document.createElement('textarea');
+    ta.value = BOOKMARKLET_URL;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    var el = document.getElementById('copy-status');
+    if (el) { el.textContent = 'Copied! Now paste into a Safari bookmark URL.'; }
+    showToast('Bookmarklet copied!');
+  });
+}
+
 var API_BASE = 'https://edonet-quick.onrender.com';
 
 var NAV = [
@@ -55,6 +82,22 @@ document.addEventListener('DOMContentLoaded', function() {
   loadBookings();
   buildNavs();
   attachEvents();
+
+  // Check if bookmarklet sent scan data via URL parameter
+  var urlParams = new URLSearchParams(window.location.search);
+  var scanParam = urlParams.get('scan');
+  if (scanParam) {
+    try {
+      var scanData = JSON.parse(decodeURIComponent(scanParam));
+      state.scanData = scanData;
+      state.calYear  = new Date().getFullYear();
+      state.calMonth = new Date().getMonth();
+      window.history.replaceState({}, '', window.location.pathname);
+      autoLoginThenShowScan(scanData);
+      return;
+    } catch(e) { console.error('Scan parse error', e); }
+  }
+
   autoLogin();
 });
 
@@ -70,6 +113,41 @@ function buildNavs() {
 }
 
 // -- AUTO LOGIN --
+
+async function autoLoginThenShowScan(scanData) {
+  var uid = localStorage.getItem('eq_uid');
+  var pw  = localStorage.getItem('eq_pw');
+  if (uid && pw) {
+    try {
+      var res  = await fetch(API_BASE + '/api/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: uid, password: pw })
+      });
+      var data = await res.json();
+      if (data.success) {
+        state.adminId    = uid;
+        state.adminToken = data.session_token;
+        ensureAdminMember(uid, pw);
+        document.getElementById('home-userid-display').textContent = uid;
+        updateMemberCount();
+      }
+    } catch(e) {}
+  }
+  // Show scan screen with the imported data
+  showScreen('scan');
+  renderScanMemberChips();
+  state.calYear  = new Date().getFullYear();
+  state.calMonth = new Date().getMonth();
+  renderCalendar();
+  renderMemberBreakdown();
+  document.getElementById('cal-wrap').style.display           = 'block';
+  document.getElementById('member-breakdown').style.display   = 'block';
+  document.getElementById('scan-empty').style.display         = 'none';
+  var total = Object.keys(scanData).filter(function(k) { return scanData[k].length > 0; }).length;
+  document.getElementById('tile-scan-count').textContent = total;
+  showToast('Loaded ' + total + ' days from edonet!');
+}
+
 async function autoLogin() {
   var uid = localStorage.getItem('eq_uid');
   var pw  = localStorage.getItem('eq_pw');
@@ -167,6 +245,7 @@ function attachEvents() {
   document.getElementById('btn-cancel-book').addEventListener('click', function() { goTo('facility'); });
   document.getElementById('btn-success-home').addEventListener('click', function() { goTo('home'); });
   document.getElementById('btn-refresh-bookings').addEventListener('click', function() { fetchAllBookings(true); });
+  document.getElementById('btn-copy-bookmarklet').addEventListener('click', copyBookmarklet);
 }
 
 function showScreen(name) {
@@ -177,7 +256,8 @@ function showScreen(name) {
 
 function goTo(screen) {
   showScreen(screen);
-  if (screen === 'members')  renderMembers();
+  if (screen === 'members')     renderMembers();
+  if (screen === 'bookmarklet') renderBookmarklet();
   if (screen === 'scan')     renderScanMemberChips();
   if (screen === 'bookings') renderBookings();
   if (screen === 'results')  loadResults();

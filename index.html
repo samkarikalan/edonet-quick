@@ -388,6 +388,38 @@
     <nav class="bottom-nav" data-screen="results"></nav>
   </div>
 
+  <!-- BOOKMARKLET SETUP -->
+  <div class="screen" id="screen-bookmarklet">
+    <div class="page-wrap">
+      <div class="page-header">
+        <div class="back-btn" data-nav="home">&#60;</div>
+        <div class="page-title">Setup</div>
+      </div>
+      <div class="page-sub">One-time bookmarklet setup</div>
+      <div class="card login-card" style="margin-bottom:16px;">
+        <div style="font-size:15px;font-weight:700;margin-bottom:12px;">&#128278; How it works</div>
+        <div style="font-size:13px;color:#6B7280;line-height:1.7;">
+          1. Tap Copy below<br>
+          2. In Safari bookmark any page (Share > Add Bookmark)<br>
+          3. Edit that bookmark, paste the URL, name it <b>edonet Quick</b><br><br>
+          To import data:<br>
+          1. Open Safari, go to edonet, login<br>
+          2. Navigate to the availability page<br>
+          3. Tap the <b>edonet Quick</b> bookmark<br>
+          4. This app opens with real data!
+        </div>
+      </div>
+      <div class="card login-card" style="margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px;">Bookmarklet URL</div>
+        <div id="bookmarklet-url" style="font-size:10px;color:#6B7280;word-break:break-all;background:#F3F4F6;padding:10px;border-radius:8px;margin-bottom:12px;max-height:80px;overflow:hidden;font-family:monospace;">tap copy below</div>
+        <button class="btn-main" id="btn-copy-bookmarklet">Copy Bookmarklet URL</button>
+        <div id="copy-status" style="text-align:center;font-size:13px;color:#10B981;margin-top:8px;min-height:20px;"></div>
+      </div>
+      <div style="margin-bottom:100px;"></div>
+    </div>
+  </div>
+
+
 </div>
 <div class="toast" id="toast"></div>
 <script src="main.js"></script>

@@ -532,7 +532,7 @@ function renderScanMemberChips() {
   wrap.style.display = 'block';
   chips.innerHTML = state.members.map(function(m) {
     return '<div class="member-chip"><div class="member-chip-dot"></div>' + m.name + '</div>';
-  }).join('');
+  }).join('') + '<div style="font-size:11px;color:#9CA3AF;align-self:center;margin-left:4px;">(' + state.members.length + ' total)</div>';
 }
 
 function selectRangeChip(chip) {
@@ -574,10 +574,13 @@ async function doScan() {
       });
       var scanData = await scanRes.json();
       var avail = scanData.availability;
+      var isReal = scanData.real_data;
+      var scanErr = scanData.error;
       if (!avail || Object.keys(avail).length === 0) {
-        // Real scan returned empty - use mock for now so UI shows something
         avail = makeMockScanData(days, m.name);
-        if (progEl) progEl.innerHTML += ' <small style="color:#F59E0B">(mock)</small>';
+        if (progEl) progEl.innerHTML += ' <small style="color:#F59E0B">(mock' + (scanErr ? ': ' + scanErr.substring(0,40) : '') + ')</small>';
+      } else {
+        if (progEl) progEl.innerHTML += ' <small style="color:#10B981">(real data)</small>';
       }
       Object.keys(avail).forEach(function(date) {
         if (!combined[date]) combined[date] = [];
@@ -668,6 +671,8 @@ function renderCalendar() {
     } else if (state.scanData[key] !== undefined && total === 0 && !isPast) {
       dotColor = 'dot-grey';
     }
+    // Also make clickable if there is a booking on this date
+    if (hasBooking && !isPast) { clickable = true; }
     var classes  = 'cal-day' + (isToday?' today':'') + (isPast?' past':'') + (clickable?' has-slots':'');
     var dataAttr = clickable ? ' data-date="' + key + '"' : '';
     // Check if any member has a booking on this date
@@ -719,6 +724,8 @@ function renderMemberBreakdown() {
 function openSheet(dateStr) {
   state.selectedDate = dateStr;
   var slots = state.scanData[dateStr] || [];
+  // If no scan data but has booking, still open sheet
+  var dateBookings = state.bookings.filter(function(b) { return b.date === dateStr && !isPastBooking(b); });
   var p = dateStr.split('-');
   var d = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
   var dayN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -727,10 +734,22 @@ function openSheet(dateStr) {
   var avail = slots.filter(function(s) { return s.status !== 'none'; });
   document.getElementById('sheet-count').textContent = avail.length + ' slot' + (avail.length===1?'':'s') + ' available';
   var list = document.getElementById('sheet-list');
-  if (!avail.length) {
+  // Add booking cards for this date
+  var dateBookings = state.bookings.filter(function(b) { return b.date === dateStr && !isPastBooking(b); });
+  var bookingHtml = dateBookings.map(function(b) {
+    var initial = b.memberName ? b.memberName[0].toUpperCase() : '?';
+    return '<div class="sheet-item" style="background:#DBEAFE;border-color:#3B82F6;">' +
+      '<div class="sheet-item-dot dot-blue"></div>' +
+      '<div class="sheet-item-info"><div class="sheet-item-name">' + b.facility + '</div>' +
+      '<div class="sheet-item-detail">Booked - ' + b.time + ' - ' + b.memberName + '</div></div>' +
+      '<div class="sheet-member-tag" style="background:#DBEAFE;color:#3B82F6;">' + b.memberName + '</div>' +
+    '</div>';
+  }).join('');
+
+  if (!avail.length && !dateBookings.length) {
     list.innerHTML = '<div style="padding:20px;text-align:center;color:#9CA3AF;">No availability on this date</div>';
   } else {
-    list.innerHTML = avail.map(function(s) {
+    list.innerHTML = bookingHtml + avail.map(function(s) {
       var dotClass = s.status === 'available' ? 'dot-green' : 'dot-yellow';
       return '<div class="sheet-item" data-facility="' + s.facility + '">' +
         '<div class="sheet-item-dot ' + dotClass + '"></div>' +

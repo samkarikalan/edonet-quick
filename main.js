@@ -502,6 +502,157 @@ function selectRangeChip(chip) {
   chip.classList.add('chip-selected');
 }
 
+
+// ?? DIRECT PHONE SCAN (no server) ??
+var EDONET = 'https://www.shisetsuyoyaku.city.edogawa.tokyo.jp/user';
+
+var FACILITIES_MAP = {
+  '2':'Ichinoe Community Hall','3':'Community Plaza Ichinoe',
+  '4':'Matsue Kumin Plaza','5':'Matsushima Community Hall',
+  '63':'Bunka Sports Plaza','8':'Komatsugawa Sakura Hall',
+  '9':'Hirai Community Hall','10':'Nakahirai Community Hall',
+  '13':'Kitakasai Community Hall','14':'Ninoe Community Hall',
+  '18':'Rinkaichou Community Hall','19':'Higashikasai Community Hall',
+  '20':'Nagashima Kuwagawa Community Hall','24':'Nishikoiwa Community Hall',
+  '25':'Kitakoiwa Community Hall','26':'Minamikoiwa Community Hall',
+  '33':'Shinozaki Community Hall',
+};
+
+var STATUS_NORM = {
+  'vacant':'available','circle':'available','some':'partial',
+  'full':'full','time-over':'closed','lottery':'lottery','lot':'lottery',
+};
+
+function getCsrf(html) {
+  var m = html.match(/__RequestVerificationToken[^>]*value="([^"]+)"/);
+  return m ? m[1] : null;
+}
+
+function parseGrid(html) {
+  var result = {};
+  var pattern = /FacilityCode[^>]*value="(\d+)"[\s\S]*?UseDate[^>]*value="(\d{4}-\d{2}-\d{2})[^"]*"[\s\S]*?Status[^>]*value="([^"]*)"/g;
+  var match;
+  while ((match = pattern.exec(html)) !== null) {
+    var facId = match[1], dateStr = match[2], status = match[3];
+    var statusN = STATUS_NORM[status] || 'unknown';
+    if (statusN === 'available' || statusN === 'partial' || statusN === 'lottery') {
+      if (!result[dateStr]) result[dateStr] = [];
+      var facName = FACILITIES_MAP[facId] || ('Facility ' + facId);
+      if (!result[dateStr].some(function(x) { return x.facility === facName; })) {
+        result[dateStr].push({ facility: facName, facility_id: facId, status: statusN, slots: [] });
+      }
+    }
+  }
+  return result;
+}
+
+function parseJsonAvail(data) {
+  var result = {};
+  if (!Array.isArray(data)) return result;
+  data.forEach(function(facGroup) {
+    if (!facGroup || typeof facGroup !== 'object') return;
+    var facId   = String(facGroup.FacilityCode || '');
+    var facName = FACILITIES_MAP[facId] || ('Facility ' + facId);
+    (facGroup.Rows || []).forEach(function(row) {
+      (row.Cells || []).forEach(function(cell) {
+        var status  = cell.Status || '';
+        var dateStr = (cell.UseDate || '').substring(0, 10);
+        var statusN = STATUS_NORM[status] || 'unknown';
+        if (dateStr && (statusN === 'available' || statusN === 'partial' || statusN === 'lottery')) {
+          if (!result[dateStr]) result[dateStr] = [];
+          if (!result[dateStr].some(function(x) { return x.facility === facName; })) {
+            result[dateStr].push({ facility: facName, facility_id: facId, status: statusN, slots: [] });
+          }
+        }
+      });
+    });
+  });
+  return result;
+}
+
+async function scanDirect(uid, pw, days) {
+  var availability = {};
+
+  // Step 1: Login
+  var loginPageResp = await fetch(EDONET + '/Login', { credentials: 'include' });
+  var loginHtml = await loginPageResp.text();
+  var csrf = getCsrf(loginHtml);
+  if (!csrf) throw new Error('Cannot load login page');
+
+  var loginForm = new FormData();
+  loginForm.append('UserLoginInputModel.Id', uid);
+  loginForm.append('UserLoginInputModel.Password', pw);
+  loginForm.append('__RequestVerificationToken', csrf);
+
+  var loginResp = await fetch(EDONET + '/Login/Login', {
+    method: 'POST', body: loginForm, credentials: 'include',
+    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json, */*' }
+  });
+  var loginData = await loginResp.json();
+  if (typeof loginData === 'string') loginData = JSON.parse(loginData);
+  if (loginData.Result !== 'Ok') throw new Error('Login failed: ' + (loginData.Information || ''));
+
+  // Step 2: Navigate to facility selection
+  var facResp = await fetch(EDONET + '/AvailabilityCheckApplySelectFacility', { credentials: 'include' });
+  var facHtml = await facResp.text();
+  csrf = getCsrf(facHtml);
+  if (!csrf) throw new Error('Cannot load facility page');
+
+  // Step 3: Select all facilities and go to availability grid
+  var facIds = Object.keys(FACILITIES_MAP);
+  var nextForm = new FormData();
+  nextForm.append('__RequestVerificationToken', csrf);
+  facIds.forEach(function(fid, i) {
+    nextForm.append('SelectFacilities.Facilities[' + i + '].SelectedFacility.Value', fid);
+    nextForm.append('SelectFacilities.Facilities[' + i + '].SelectedFacility.Selected', 'true');
+    nextForm.append('SelectFacilities.Facilities[' + i + '].SelectedFacility.Text', FACILITIES_MAP[fid]);
+    nextForm.append('SelectFacilities.Facilities[' + i + '].SelectedFacility.Disabled', 'false');
+  });
+
+  var daysResp = await fetch(EDONET + '/AvailabilityCheckApplySelectFacility/Next', {
+    method: 'POST', body: nextForm, credentials: 'include'
+  });
+  var daysHtml = await daysResp.text();
+
+  // Parse first week from HTML
+  var parsed = parseGrid(daysHtml);
+  Object.keys(parsed).forEach(function(d) {
+    if (!availability[d]) availability[d] = [];
+    parsed[d].forEach(function(f) {
+      if (!availability[d].some(function(x) { return x.facility === f.facility; }))
+        availability[d].push(f);
+    });
+  });
+
+  // Step 4: Get more weeks via AfterPeriod AJAX
+  csrf = getCsrf(daysHtml);
+  var weeksExtra = Math.max(0, Math.floor(days / 7));
+  for (var w = 0; w < weeksExtra; w++) {
+    if (!csrf) break;
+    var afterForm = new FormData();
+    afterForm.append('__RequestVerificationToken', csrf);
+    var afterResp = await fetch(EDONET + '/AvailabilityCheckApplySelectDays/AfterPeriod', {
+      method: 'POST', body: afterForm, credentials: 'include',
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json, */*' }
+    });
+    var afterData = await afterResp.json();
+    // AfterPeriod returns [AvailabilityDays, searchResultHtml]
+    var avail2 = Array.isArray(afterData) ? afterData[0] : null;
+    if (avail2) {
+      var parsed2 = parseJsonAvail(avail2);
+      Object.keys(parsed2).forEach(function(d) {
+        if (!availability[d]) availability[d] = [];
+        parsed2[d].forEach(function(f) {
+          if (!availability[d].some(function(x) { return x.facility === f.facility; }))
+            availability[d].push(f);
+        });
+      });
+    }
+  }
+
+  return availability;
+}
+
 async function doScan() {
   if (!state.members.length) { showToast('Add members first'); goTo('members'); return; }
   var rangeChip = document.querySelector('[data-range].chip-selected');
@@ -524,23 +675,21 @@ async function doScan() {
     var m = state.members[i];
     var progEl = document.getElementById('prog-' + m.id);
     try {
-      var loginRes  = await fetch(API_BASE + '/api/login', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: m.uid, password: m.pw })
-      });
-      var loginData = await loginRes.json();
-      if (!loginData.success) throw new Error('Login failed');
-      var scanRes  = await fetch(API_BASE + '/api/scan', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_token: loginData.session_token, days: days })
-      });
-      var scanData = await scanRes.json();
-      var avail = scanData.availability || {};
-      var scanErr = scanData.error;
-      if (Object.keys(avail).length === 0) {
-        if (progEl) progEl.innerHTML = '<div class="progress-error">X</div><span>' + m.name + ' - ' + (scanErr ? scanErr.substring(0, 60) : 'No data') + '</span>';
-      } else {
-        if (progEl) progEl.innerHTML = '<div class="progress-check">OK</div><span>' + m.name + ' - ' + Object.keys(avail).length + ' days found</span>';
+      // Login handled inside scanDirect
+      // Scan directly from phone browser - no server needed
+      var avail = {};
+      var scanErr = null;
+      try {
+        avail = await scanDirect(m.uid, m.pw, days);
+        if (Object.keys(avail).length === 0) {
+          scanErr = 'No available slots found';
+          if (progEl) progEl.innerHTML = '<div class="progress-check">OK</div><span>' + m.name + ' - 0 days (all full)</span>';
+        } else {
+          if (progEl) progEl.innerHTML = '<div class="progress-check">OK</div><span>' + m.name + ' - ' + Object.keys(avail).length + ' days found</span>';
+        }
+      } catch(scanEx) {
+        scanErr = scanEx.message;
+        if (progEl) progEl.innerHTML = '<div class="progress-error">X</div><span>' + m.name + ' - ' + scanEx.message.substring(0,50) + '</span>';
       }
       Object.keys(avail).forEach(function(date) {
         if (!combined[date]) combined[date] = [];

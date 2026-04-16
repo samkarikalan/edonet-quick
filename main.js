@@ -658,86 +658,27 @@ function parseJsonAvail(data) {
 }
 
 async function scanDirect(uid, pw, days) {
-  var availability = {};
-
-  // Step 1: Login
-  var loginPageResp = await fetch(EDONET + '/Login', { credentials: 'include' });
-  var loginHtml = await loginPageResp.text();
-  var csrf = getCsrf(loginHtml);
-  if (!csrf) throw new Error('Cannot load login page');
-
-  var loginForm = new FormData();
-  loginForm.append('UserLoginInputModel.Id', uid);
-  loginForm.append('UserLoginInputModel.Password', pw);
-  loginForm.append('__RequestVerificationToken', csrf);
-
-  var loginResp = await fetch(EDONET + '/Login/Login', {
-    method: 'POST', body: loginForm, credentials: 'include',
-    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json, */*' }
+  // Login via server
+  var loginRes = await fetch(API_BASE + '/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: uid, password: pw })
   });
-  var loginData = await loginResp.json();
-  if (typeof loginData === 'string') loginData = JSON.parse(loginData);
-  if (loginData.Result !== 'Ok') throw new Error('Login failed: ' + (loginData.Information || ''));
+  var loginData = await loginRes.json();
+  if (!loginData.success) throw new Error('Login failed: ' + (loginData.error || 'unknown'));
 
-  // Step 2: Navigate to facility selection
-  var facResp = await fetch(EDONET + '/AvailabilityCheckApplySelectFacility', { credentials: 'include' });
-  var facHtml = await facResp.text();
-  csrf = getCsrf(facHtml);
-  if (!csrf) throw new Error('Cannot load facility page');
-
-  // Step 3: Select all facilities and go to availability grid
-  var facIds = Object.keys(FACILITIES_MAP);
-  var nextForm = new FormData();
-  nextForm.append('__RequestVerificationToken', csrf);
-  facIds.forEach(function(fid, i) {
-    nextForm.append('SelectFacilities.Facilities[' + i + '].SelectedFacility.Value', fid);
-    nextForm.append('SelectFacilities.Facilities[' + i + '].SelectedFacility.Selected', 'true');
-    nextForm.append('SelectFacilities.Facilities[' + i + '].SelectedFacility.Text', FACILITIES_MAP[fid]);
-    nextForm.append('SelectFacilities.Facilities[' + i + '].SelectedFacility.Disabled', 'false');
+  // Scan via server — server calls Edogawa, no CORS issue
+  var scanRes = await fetch(API_BASE + '/api/scan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_token: loginData.session_token, days: days })
   });
+  var scanData = await scanRes.json();
 
-  var daysResp = await fetch(EDONET + '/AvailabilityCheckApplySelectFacility/Next', {
-    method: 'POST', body: nextForm, credentials: 'include'
-  });
-  var daysHtml = await daysResp.text();
-
-  // Parse first week from HTML
-  var parsed = parseGrid(daysHtml);
-  Object.keys(parsed).forEach(function(d) {
-    if (!availability[d]) availability[d] = [];
-    parsed[d].forEach(function(f) {
-      if (!availability[d].some(function(x) { return x.facility === f.facility; }))
-        availability[d].push(f);
-    });
-  });
-
-  // Step 4: Get more weeks via AfterPeriod AJAX
-  csrf = getCsrf(daysHtml);
-  var weeksExtra = Math.max(0, Math.floor(days / 7));
-  for (var w = 0; w < weeksExtra; w++) {
-    if (!csrf) break;
-    var afterForm = new FormData();
-    afterForm.append('__RequestVerificationToken', csrf);
-    var afterResp = await fetch(EDONET + '/AvailabilityCheckApplySelectDays/AfterPeriod', {
-      method: 'POST', body: afterForm, credentials: 'include',
-      headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json, */*' }
-    });
-    var afterData = await afterResp.json();
-    // AfterPeriod returns [AvailabilityDays, searchResultHtml]
-    var avail2 = Array.isArray(afterData) ? afterData[0] : null;
-    if (avail2) {
-      var parsed2 = parseJsonAvail(avail2);
-      Object.keys(parsed2).forEach(function(d) {
-        if (!availability[d]) availability[d] = [];
-        parsed2[d].forEach(function(f) {
-          if (!availability[d].some(function(x) { return x.facility === f.facility; }))
-            availability[d].push(f);
-        });
-      });
-    }
+  if (scanData.error && (!scanData.availability || Object.keys(scanData.availability).length === 0)) {
+    throw new Error(scanData.error);
   }
-
-  return availability;
+  return scanData.availability || {};
 }
 
 async function doScan() {
